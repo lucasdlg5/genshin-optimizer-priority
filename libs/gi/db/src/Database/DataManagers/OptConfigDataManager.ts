@@ -13,9 +13,11 @@ import {
   artSlotMainKeys,
   defaultOptArtifactLevel,
 } from '@genshin-optimizer/gi/consts'
+import type { CharacterKey } from '@genshin-optimizer/gi/consts'
 import { z } from 'zod'
 import type { ArtCharDatabase } from '../ArtCharDatabase'
 import { DataManager } from '../DataManager'
+import { getPriorityBlockedArtifactIds } from '../DataEntries/CharacterPriorityEntry'
 import type { GeneratedBuildList } from './GeneratedBuildListDataManager'
 
 export const maxBuildsToShowList = [1, 2, 3, 4, 5, 8, 10] as const
@@ -135,6 +137,29 @@ export class OptConfigDataManager extends DataManager<
     for (const key of this.database.storage.keys)
       if (key.startsWith('optConfig_') && !this.set(key, {}))
         this.database.storage.remove(key)
+  }
+
+  /**
+   * Returns the persisted configuration together with transient exclusions
+   * imposed by character priority. The returned exclusion list never changes
+   * artifact locations or writes back to the persisted configuration.
+   */
+  getEffectiveForCharacter(optConfigId: string, characterKey: CharacterKey) {
+    const config = this.get(optConfigId)
+    if (!config) return undefined
+    const blockedArtifactIds = getPriorityBlockedArtifactIds({
+      orderedCharacterKeys: this.database.characterPriority.get()
+        .orderedCharacterKeys,
+      targetCharacterKey: characterKey,
+      enabled: this.database.characterPriority.get().enabled,
+      equippedArtifactsByCharacter: Object.fromEntries(
+        this.database.chars.values.map((character) => [
+          character.key,
+          Object.values(character.equippedArtifacts),
+        ])
+      ),
+    })
+    return { config, blockedArtifactIds }
   }
   override validate(obj: unknown, key: string): OptConfig | undefined {
     const result = optConfigSchema.safeParse(obj)

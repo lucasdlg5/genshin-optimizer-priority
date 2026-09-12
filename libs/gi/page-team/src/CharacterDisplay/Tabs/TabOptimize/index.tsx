@@ -1,5 +1,6 @@
 import { AdResponsive } from '@genshin-optimizer/common/ad'
 import {
+  useDataEntryBase,
   useDataManagerEntries,
   useDataManagerValues,
 } from '@genshin-optimizer/common/database-ui'
@@ -164,6 +165,16 @@ export default function TabBuild() {
   const noArtifact = useMemo(() => !database.arts.values.length, [database])
 
   const buildSetting = useOptConfig(optConfigId)!
+  const characterPriority = useDataEntryBase(database.characterPriority)
+  const characterValues = useDataManagerValues(database.chars)
+  const effectiveOptConfig = database.optConfigs.getEffectiveForCharacter(
+    optConfigId,
+    characterKey
+  )
+  const priorityBlockedArtifactIds = useMemo(
+    () => new Set(effectiveOptConfig?.blockedArtifactIds ?? []),
+    [effectiveOptConfig, characterPriority, characterValues]
+  )
   const {
     plotBase,
     optimizationTarget: optimizationTargetDb,
@@ -201,6 +212,7 @@ export default function TabBuild() {
     } = deferredBuildSetting
 
     return allArts.filter((art) => {
+      if (priorityBlockedArtifactIds.has(art.id)) return false
       if (!useExcludedArts && artExclusion.includes(art.id)) return false
       if (!useTeammateBuild && teammateArtifactIds.includes(art.id))
         return false
@@ -221,7 +233,13 @@ export default function TabBuild() {
 
       return true
     })
-  }, [deferredBuildSetting, allArts, teammateArtifactIds, characterKey])
+  }, [
+    deferredBuildSetting,
+    allArts,
+    teammateArtifactIds,
+    characterKey,
+    priorityBlockedArtifactIds,
+  ])
 
   const filteredArtIdMap = useMemo(
     () =>

@@ -28,7 +28,7 @@ import type { IGO } from './exim'
 // 3. Update `currentDBVersion`
 // 4. Test on import, and also on version update
 
-export const currentDBVersion = 26
+export const currentDBVersion = 27
 
 export function migrateGOOD(good: IGOOD & IGO): IGOOD & IGO {
   const version = good.dbVersion ?? 0
@@ -291,6 +291,7 @@ export function migrateGOOD(good: IGOOD & IGO): IGOOD & IGO {
         buildCharKeyMap.set(buildId, teamchar.key)
         if (teamCharId) buildSrcTeamCharMap.set(buildId, teamCharId)
       })
+
       teamchar.buildTcIds?.forEach((buildTcId) => {
         buildTcCharKeyMap.set(buildTcId, teamchar.key)
         if (teamCharId) buildTcSrcTeamCharMap.set(buildTcId, teamCharId)
@@ -331,6 +332,9 @@ export function migrateGOOD(good: IGOOD & IGO): IGOOD & IGO {
       })
     }
   })
+
+  // 10.38.2 - priority and bulk-build display entries are self-defaulting.
+  migrateVersion(27, () => null)
 
   good.dbVersion = currentDBVersion
   if (version > currentDBVersion)
@@ -594,6 +598,7 @@ export function migrate(storage: DBStorage) {
           buildCharKeyMap.set(buildId, teamchar.key)
           buildSrcTeamCharMap.set(buildId, key)
         })
+
         teamchar.buildTcIds?.forEach((buildTcId) => {
           buildTcCharKeyMap.set(buildTcId, teamchar.key)
           buildTcSrcTeamCharMap.set(buildTcId, key)
@@ -636,6 +641,9 @@ export function migrate(storage: DBStorage) {
       }
     }
   })
+
+  // 10.38.2 - priority and bulk-build display entries are self-defaulting.
+  migrateVersion(27, () => null)
 
   storage.setDBVersion(currentDBVersion)
   if (version > currentDBVersion)

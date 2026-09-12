@@ -1,9 +1,13 @@
 import type { DBStorage } from '@genshin-optimizer/common/database'
 import { Database, SandboxStorage } from '@genshin-optimizer/common/database'
 import { compressToB64Gzip } from '@genshin-optimizer/common/util'
-import type { GenderKey } from '@genshin-optimizer/gi/consts'
+import type { CharacterKey, GenderKey } from '@genshin-optimizer/gi/consts'
 import type { IGOOD } from '@genshin-optimizer/gi/good'
 import { DBMetaEntry } from './DataEntries/DBMetaEntry'
+import {
+  CharacterPriorityEntry,
+  DisplayBulkBuildsEntry,
+} from './DataEntries'
 import { DisplayArchiveEntry } from './DataEntries/DisplayArchiveEntry'
 import { DisplayArtifactEntry } from './DataEntries/DisplayArtifactEntry'
 import { DisplayCharacterEntry } from './DataEntries/DisplayCharacterEntry'
@@ -42,6 +46,8 @@ export class ArtCharDatabase extends Database {
   displayArchive: DisplayArchiveEntry
   displayTool: DisplayToolEntry
   displayTeam: DisplayTeamEntry
+  characterPriority: CharacterPriorityEntry
+  displayBulkBuilds: DisplayBulkBuildsEntry
   dbIndex: 1 | 2 | 3 | 4
   dbVer: number
 
@@ -89,6 +95,8 @@ export class ArtCharDatabase extends Database {
     this.displayTool = new DisplayToolEntry(this)
     this.displayTeam = new DisplayTeamEntry(this)
     this.displayArchive = new DisplayArchiveEntry(this)
+    this.characterPriority = new CharacterPriorityEntry(this)
+    this.displayBulkBuilds = new DisplayBulkBuildsEntry(this)
 
     // invalidates character when things change.
     const updateLastEdit = () => this.dbMeta.set({ lastEdit: Date.now() })
@@ -96,6 +104,12 @@ export class ArtCharDatabase extends Database {
     // IMPORTANT: do not follow changes made to dbMeta,
     // as it would end in infinite loop
     this.chars.followAny(updateLastEdit)
+    this.chars.followAny(() =>
+      this.characterPriority.sync(this.chars.keys as CharacterKey[])
+    )
+    this.chars.followAny(() =>
+      this.displayBulkBuilds.sync(this.chars.keys, this.teams.keys)
+    )
     this.arts.followAny(updateLastEdit)
     this.weapons.followAny(updateLastEdit)
     this.optConfigs.followAny(updateLastEdit)
@@ -104,12 +118,17 @@ export class ArtCharDatabase extends Database {
     this.builds.followAny(updateLastEdit)
     this.teamChars.followAny(updateLastEdit)
     this.teams.followAny(updateLastEdit)
+    this.teams.followAny(() =>
+      this.displayBulkBuilds.sync(this.chars.keys, this.teams.keys)
+    )
     this.displayWeapon.follow(updateLastEdit)
     this.displayArtifact.follow(updateLastEdit)
     this.displayCharacter.follow(updateLastEdit)
     this.displayTool.follow(updateLastEdit)
     this.displayTeam.follow(updateLastEdit)
     this.displayArchive.follow(updateLastEdit)
+    this.characterPriority.follow(updateLastEdit)
+    this.displayBulkBuilds.follow(updateLastEdit)
   }
   get dataManagers() {
     // IMPORTANT: it must be chars, weapon, arts in order, to respect import order
@@ -135,6 +154,8 @@ export class ArtCharDatabase extends Database {
       this.displayTool,
       this.displayTeam,
       this.displayArchive,
+      this.characterPriority,
+      this.displayBulkBuilds,
     ] as const
   }
 

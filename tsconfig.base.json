@@ -100,6 +100,9 @@
       "@genshin-optimizer/gi/page-characters": [
         "./libs/gi/page-characters/src/index.tsx"
       ],
+      "@genshin-optimizer/gi/page-bulk-builds": [
+        "./libs/gi/page-bulk-builds/src/index.tsx"
+      ],
       "@genshin-optimizer/gi/page-doc": ["./libs/gi/page-doc/src/index.tsx"],
       "@genshin-optimizer/gi/page-home": ["./libs/gi/page-home/src/index.tsx"],
       "@genshin-optimizer/gi/page-scanner": [
