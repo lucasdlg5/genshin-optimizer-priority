@@ -270,6 +270,8 @@ Se a convenção atual indicar que a configuração deve ser um `DataManager` em
 - O próximo trabalho necessário para geração real é extrair o corpo de `generateBuilds` para um serviço compartilhado que receba uma equipe em memória, incluindo uma representação Solo sem persistência.
 - A geração individual agora força `topN: 1`, remove o seletor de quantidade e aplica automaticamente o primeiro resultado ao personagem ao finalizar.
 - Configurações sem uma exclusão explícita de Rainbow recebem `rainbow: [2, 4]`; os demais conjuntos permanecem ativos por padrão.
+- A página Bulk Builds agora filtra personagens por nome traduzido, move os selecionados para o início da grade e exibe o progresso entre a prioridade e os cards.
+- Antes da fila, a página abre um preflight com atalhos para configurar Target Selector e Artifact Set Configuration na área de equipes. A execução programática ainda precisa da extração do solver para deixar de usar o erro explícito atual.
 
 ### Concluído nesta sessão
 

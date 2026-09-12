@@ -6,8 +6,8 @@ import { useDatabase, useDBMeta } from '@genshin-optimizer/gi/db-ui'
 import { CharacterName } from '@genshin-optimizer/gi/ui'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
-import { Box, Button, Checkbox, FormControlLabel, Grid, IconButton, Typography } from '@mui/material'
-import { useMemo, useRef, useState } from 'react'
+import { Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Grid, IconButton, TextField, Typography } from '@mui/material'
+import { useMemo, useRef, useState, useDeferredValue } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BulkBuildCharacterCard } from './BulkBuildCharacterCard'
 import { BulkBuildProgress } from './BulkBuildProgress'
@@ -21,7 +21,7 @@ export * from './bulkBuildQueue'
 export default function PageBulkBuilds() {
   const database = useDatabase()
   const { gender } = useDBMeta()
-  const { t } = useTranslation('page_bulk_builds')
+  const { t } = useTranslation(['page_bulk_builds', 'charNames_gen'])
   const state = useDataEntryBase(database.displayBulkBuilds)
   const priority = useDataEntryBase(database.characterPriority)
   const characterKeys = useDataManagerKeys(database.chars)
@@ -32,10 +32,26 @@ export default function PageBulkBuilds() {
   )
   const selections = state.selections
   const selectedKeys = new Set(selections.map((selection) => selection.characterKey))
+  const [searchTerm, setSearchTerm] = useState('')
+  const deferredSearchTerm = useDeferredValue(searchTerm)
+  const displayCharacterKeys = useMemo(() => {
+    const search = deferredSearchTerm.trim().toLowerCase()
+    const matches = (characterKey: string) =>
+      !search ||
+      t(characterKey, { ns: 'charNames_gen' }).toLowerCase().includes(search)
+    const priorityKeys = priority.orderedCharacterKeys.filter(
+      (characterKey) => matches(characterKey) && selectedKeys.has(characterKey)
+    )
+    const otherKeys = characterKeys
+      .filter((characterKey) => matches(characterKey) && !selectedKeys.has(characterKey))
+      .sort((left, right) => left.localeCompare(right))
+    return [...priorityKeys, ...otherKeys]
+  }, [characterKeys, deferredSearchTerm, priority.orderedCharacterKeys, selections, t])
   const queue = useRef(new BulkBuildQueue()).current
   const [updates, setUpdates] = useState<BulkBuildQueueUpdate[]>([])
   const [running, setRunning] = useState(false)
   const [draggedPriority, setDraggedPriority] = useState<string>()
+  const [showPreflight, setShowPreflight] = useState(false)
 
   const updateSelection = (selection: BulkBuildSelection | undefined, characterKey: string) => {
     if (!selection)
@@ -61,6 +77,10 @@ export default function PageBulkBuilds() {
       setUpdates(selections.map((item, index) => ({ index, item, status: 'error' as const, error: new Error(errors[index] ?? errors[0]) })))
       return
     }
+    setShowPreflight(true)
+  }
+  const confirmRun = async () => {
+    setShowPreflight(false)
     setRunning(true)
     setUpdates([])
     const orderedSelections = orderBulkBuildSelections(
@@ -182,8 +202,23 @@ export default function PageBulkBuilds() {
           ))}
         </Box>
       </CardThemed>
+      {(running || updates.length > 0) && (
+        <CardThemed>
+          <Box p={1}>
+            <BulkBuildProgress updates={updates} total={selections.length} />
+            {!updates.length && <Typography>{t('notStarted')}</Typography>}
+          </Box>
+        </CardThemed>
+      )}
+      <TextField
+        label={t('search')}
+        value={searchTerm}
+        onChange={(event) => setSearchTerm(event.target.value)}
+        size="small"
+        fullWidth
+      />
       <Grid container spacing={1}>
-        {characterKeys.map((characterKey) => {
+        {displayCharacterKeys.map((characterKey) => {
           const selection = selections.find((item) => item.characterKey === characterKey) ?? { characterKey, mode: 'solo' as const }
           return (
             <Grid item xs={12} sm={6} md={4} lg={3} key={characterKey}>
@@ -197,14 +232,28 @@ export default function PageBulkBuilds() {
           )
         })}
       </Grid>
-      {!!selections.length && (
-        <CardThemed>
-          <Box p={1}>
-            <BulkBuildProgress updates={updates} total={selections.length} />
-            {!updates.length && <Typography>{t('notStarted')}</Typography>}
-          </Box>
-        </CardThemed>
-      )}
+      <Dialog open={showPreflight} onClose={() => setShowPreflight(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('preflightTitle')}</DialogTitle>
+        <DialogContent>
+          <Typography>{t('preflightDescription')}</Typography>
+          <Typography color="warning.main" sx={{ mt: 1 }}>
+            {t('preflightTargetWarning')}
+          </Typography>
+          <Typography sx={{ mt: 1 }}>{t('preflightArtifactDescription')}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowPreflight(false)}>{t('cancel')}</Button>
+          <Button variant="outlined" onClick={() => { window.location.hash = '#/teams' }}>
+            {t('openTargetSetup')}
+          </Button>
+          <Button variant="outlined" onClick={() => { window.location.hash = '#/teams' }}>
+            {t('openArtifactSetup')}
+          </Button>
+          <Button variant="contained" onClick={confirmRun}>
+            {t('run')}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Typography variant="caption" color="text.secondary">
         {t('integrationNote')}
       </Typography>
