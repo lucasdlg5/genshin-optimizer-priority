@@ -1,5 +1,5 @@
 import { useDataEntryBase, useDataManagerEntries, useDataManagerKeys } from '@genshin-optimizer/common/database-ui'
-import { CardThemed } from '@genshin-optimizer/common/ui'
+import { CardThemed, NumberInputLazy } from '@genshin-optimizer/common/ui'
 import type { BulkBuildQueueUpdate } from './bulkBuildQueue'
 import type { BulkBuildSelection } from '@genshin-optimizer/gi/db'
 import { useDatabase, useDBMeta } from '@genshin-optimizer/gi/db-ui'
@@ -35,6 +35,7 @@ export default function PageBulkBuilds() {
   const queue = useRef(new BulkBuildQueue()).current
   const [updates, setUpdates] = useState<BulkBuildQueueUpdate[]>([])
   const [running, setRunning] = useState(false)
+  const [draggedPriority, setDraggedPriority] = useState<string>()
 
   const updateSelection = (selection: BulkBuildSelection | undefined, characterKey: string) => {
     if (!selection)
@@ -84,6 +85,30 @@ export default function PageBulkBuilds() {
     ;[next[index], next[target]] = [next[target], next[index]]
     database.characterPriority.set({ orderedCharacterKeys: next })
   }
+  const applyPriorityPosition = (characterKey: string, position: number) => {
+    const currentIndex = priority.orderedCharacterKeys.indexOf(characterKey)
+    if (currentIndex < 0) return
+    const targetIndex = Math.max(
+      0,
+      Math.min(priority.orderedCharacterKeys.length - 1, position - 1)
+    )
+    if (targetIndex === currentIndex) return
+    const next = [...priority.orderedCharacterKeys]
+    next.splice(currentIndex, 1)
+    next.splice(targetIndex, 0, characterKey)
+    database.characterPriority.set({ orderedCharacterKeys: next })
+  }
+  const dropPriority = (targetCharacterKey: string) => {
+    if (!draggedPriority || draggedPriority === targetCharacterKey) return
+    const from = priority.orderedCharacterKeys.indexOf(draggedPriority)
+    const to = priority.orderedCharacterKeys.indexOf(targetCharacterKey)
+    if (from < 0 || to < 0) return
+    const next = [...priority.orderedCharacterKeys]
+    next.splice(from, 1)
+    next.splice(to, 0, draggedPriority)
+    database.characterPriority.set({ orderedCharacterKeys: next })
+    setDraggedPriority(undefined)
+  }
 
   return (
     <Box display="flex" flexDirection="column" gap={1}>
@@ -114,9 +139,29 @@ export default function PageBulkBuilds() {
         <Box p={1}>
           <Typography variant="subtitle1">{t('priorityOrder')}</Typography>
           {priority.orderedCharacterKeys.map((characterKey, index) => (
-            <Box key={characterKey} display="flex" alignItems="center" gap={1}>
+            <Box
+              key={characterKey}
+              display="flex"
+              alignItems="center"
+              gap={1}
+              draggable
+              onDragStart={() => setDraggedPriority(characterKey)}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => dropPriority(characterKey)}
+              sx={{ cursor: 'grab' }}
+            >
               <Typography sx={{ width: 24 }}>{index + 1}</Typography>
               <Box flexGrow={1}><CharacterName characterKey={characterKey} gender={gender} /></Box>
+              <NumberInputLazy
+                value={index + 1}
+                inputProps={{ min: 1, max: priority.orderedCharacterKeys.length }}
+                size="small"
+                sx={{ width: 70 }}
+                aria-label={t('priorityPosition')}
+                onChange={(position) =>
+                  applyPriorityPosition(characterKey, position)
+                }
+              />
               <IconButton
                 size="small"
                 disabled={index === 0}

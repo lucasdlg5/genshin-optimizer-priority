@@ -5,6 +5,7 @@
   "priority": "Apply character priority",
   "stopOnError": "Stop on error",
   "priorityOrder": "Character priority order",
+  "priorityPosition": "Priority position",
   "moveUp": "Move up",
   "moveDown": "Move down",
   "run": "Run builds",

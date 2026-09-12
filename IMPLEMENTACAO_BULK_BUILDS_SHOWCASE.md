@@ -234,6 +234,9 @@ Se a convenção atual indicar que a configuração deve ser um `DataManager` em
 - [ ] Validar migração com banco antigo e banco vazio.
 - [ ] Validar acessibilidade básica dos cards, checkboxes, modal e progresso.
 - [x] Atualizar READMEs e este arquivo com o estado real de cada item.
+- [x] Permitir alterar a posição por número e por arrastar na lista de prioridade.
+- [x] Definir todos os conjuntos como ativos por padrão e Rainbow Builds desativado.
+- [x] Limitar Generate Builds a uma build e equipar automaticamente o primeiro resultado.
 
 ## Critérios de aceitação
 
@@ -265,6 +268,8 @@ Se a convenção atual indicar que a configuração deve ser um `DataManager` em
 - Commit posterior: ordenação determinística da fila pela prioridade e testes de execução sequencial/resolução de equipe.
 - O solver real continua deliberadamente não conectado: a geração existente depende de `TeamCharacterContext`, `DataContext` e estado React da aba `TabOptimize`. A página informa o erro explicitamente em vez de simular sucesso ou alterar builds.
 - O próximo trabalho necessário para geração real é extrair o corpo de `generateBuilds` para um serviço compartilhado que receba uma equipe em memória, incluindo uma representação Solo sem persistência.
+- A geração individual agora força `topN: 1`, remove o seletor de quantidade e aplica automaticamente o primeiro resultado ao personagem ao finalizar.
+- Configurações sem uma exclusão explícita de Rainbow recebem `rainbow: [2, 4]`; os demais conjuntos permanecem ativos por padrão.
 
 ### Concluído nesta sessão
 
