@@ -1,0 +1,14 @@
+{
+  "title": "Bulk Builds",
+  "description": "Select characters and build contexts to process in a deterministic queue.",
+  "selectAll": "Select all",
+  "priority": "Apply character priority",
+  "stopOnError": "Stop on error",
+  "priorityOrder": "Character priority order",
+  "moveUp": "Move up",
+  "moveDown": "Move down",
+  "run": "Run builds",
+  "cancel": "Cancel",
+  "notStarted": "The queue has not started.",
+  "integrationNote": "The queue is ready for the shared solver service. Solver execution is intentionally not simulated until that service is exposed."
+}

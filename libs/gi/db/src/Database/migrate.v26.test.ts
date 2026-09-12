@@ -42,7 +42,7 @@ describe('migrate v26 global builds', () => {
       optConfigs: [{ id: 'optConfig_0' }],
     } as any)
 
-    expect(good.dbVersion).toEqual(26)
+    expect(good.dbVersion).toEqual(27)
     expect(good.teamchars?.[0]?.buildIds).toBeUndefined()
     expect(good.builds?.[0]?.characterKey).toEqual('RaidenShogun')
     expect(good.builds?.[0]?.srcTeamCharId).toEqual(teamCharId)
@@ -89,7 +89,7 @@ describe('migrate v26 global builds', () => {
 
     migrate(storage)
 
-    expect(storage.getDBVersion()).toEqual(26)
+    expect(storage.getDBVersion()).toEqual(27)
     expect(storage.get(teamCharId).buildIds).toBeUndefined()
     expect(storage.get(teamCharId).buildTcIds).toBeUndefined()
     expect(storage.get(buildId).characterKey).toEqual('RaidenShogun')

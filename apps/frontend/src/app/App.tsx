@@ -88,6 +88,12 @@ const PageCharacters = lazy(
       default: ComponentType<any>
     }>
 )
+const PageBulkBuilds = lazy(
+  () =>
+    import('@genshin-optimizer/gi/page-bulk-builds') as unknown as Promise<{
+      default: ComponentType<any>
+    }>
+)
 const PageTeams = lazy(
   () =>
     import('@genshin-optimizer/gi/page-teams') as unknown as Promise<{
@@ -196,6 +202,7 @@ function Content() {
               <Route path="/artifacts" element={<PageArtifacts />} />
               <Route path="/weapons" element={<PageWeapons />} />
               <Route path="/characters/*" element={<PageCharacters />} />
+              <Route path="/bulk-builds" element={<PageBulkBuilds />} />
               <Route path="/teams/*">
                 <Route index element={<PageTeams />} />
                 <Route path=":teamId/*" element={<PageTeam />} />
