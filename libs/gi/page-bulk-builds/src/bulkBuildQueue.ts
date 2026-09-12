@@ -62,6 +62,21 @@ export function resolveBulkBuildSelection(
   )
 }
 
+export function orderBulkBuildSelections(
+  selections: readonly BulkBuildQueueItem[],
+  orderedCharacterKeys: readonly string[]
+): BulkBuildQueueItem[] {
+  const priority = new Map(
+    orderedCharacterKeys.map((characterKey, index) => [characterKey, index])
+  )
+  return [...selections].sort(
+    (left, right) =>
+      (priority.get(left.characterKey) ?? Number.MAX_SAFE_INTEGER) -
+        (priority.get(right.characterKey) ?? Number.MAX_SAFE_INTEGER) ||
+      left.characterKey.localeCompare(right.characterKey)
+  )
+}
+
 export class BulkBuildQueue {
   private controller?: AbortController
 

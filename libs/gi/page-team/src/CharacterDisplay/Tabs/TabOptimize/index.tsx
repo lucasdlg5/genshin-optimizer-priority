@@ -31,7 +31,6 @@ import {
   charKeyToLocCharKey,
 } from '@genshin-optimizer/gi/consts'
 import type { GeneratedBuild } from '@genshin-optimizer/gi/db'
-import { maxBuildsToShowList } from '@genshin-optimizer/gi/db'
 import {
   TeamCharacterContext,
   useArtifacts,
@@ -180,12 +179,12 @@ export default function TabBuild() {
     optimizationTarget: optimizationTargetDb,
     mainStatAssumptionLevel,
     allowPartial,
-    maxBuildsToShow,
     levelLow,
     levelHigh,
     generatedBuildListId,
     useTeammateBuild,
   } = buildSetting
+  const maxBuildsToShow = 1
   const { builds: buildsDb, buildDate } = useGeneratedBuildList(
     generatedBuildListId ?? ''
   ) ?? { builds: [] as GeneratedBuild[] }
@@ -386,7 +385,7 @@ export default function TabBuild() {
       exclusion: artSetExclusion,
       constraints: nodes.map((value, i) => ({ value, min: minimum[i] })),
 
-      topN: maxBuildsToShow,
+      topN: 1,
       plotBase: plotBaseNode,
     }
     const status: Omit<BuildStatus, 'type'> = {
@@ -464,6 +463,33 @@ export default function TabBuild() {
         })),
         buildDate: Date.now(),
       })
+
+      const firstBuild = builds[0]
+      if (firstBuild) {
+        const character = database.chars.get(characterKey)
+        if (character) {
+          const characterLocation = charKeyToLocCharKey(characterKey)
+          allArtifactSlotKeys.forEach((slotKey) => {
+            const nextArtifactId = firstBuild.artifactIds.find(
+              (artifactId) =>
+                database.arts.get(artifactId)?.slotKey === slotKey
+            )
+            const currentArtifactId = character.equippedArtifacts[slotKey]
+            if (currentArtifactId && currentArtifactId !== nextArtifactId)
+              database.arts.set(currentArtifactId, { location: '' })
+            if (nextArtifactId)
+              database.arts.set(nextArtifactId, { location: characterLocation })
+          })
+          if (
+            character.equippedWeapon &&
+            character.equippedWeapon !== weaponId &&
+            database.weapons.get(character.equippedWeapon)
+          )
+            database.weapons.set(character.equippedWeapon, { location: '' })
+          if (weaponId)
+            database.weapons.set(weaponId, { location: characterLocation })
+        }
+      }
 
       setTimeout(async () => {
         // Using a ref because a user can cancel the notification while the build is going.
@@ -686,33 +712,13 @@ export default function TabBuild() {
       {isSM && targetSelector}
       <ButtonGroup>
         {!isSM && targetSelector}
-        <DropdownButton
+        <Button
           disabled={generatingBuilds || !characterKey || !optimizationTarget}
-          title={
-            <Trans t={t} i18nKey="build" count={maxBuildsToShow}>
-              {{ count: maxBuildsToShow }} Builds
-            </Trans>
-          }
         >
-          <MenuItem>
-            <Typography variant="caption" color="info.main">
-              {t('buildDropdownDesc')}
-            </Typography>
-          </MenuItem>
-          <Divider />
-          {maxBuildsToShowList.map((v) => (
-            <MenuItem
-              key={v}
-              onClick={() =>
-                database.optConfigs.set(optConfigId, { maxBuildsToShow: v })
-              }
-            >
-              <Trans t={t} i18nKey="build" count={v}>
-                {{ count: v }} Builds
-              </Trans>
-            </MenuItem>
-          ))}
-        </DropdownButton>
+          <Trans t={t} i18nKey="build" count={1}>
+            1 Build
+          </Trans>
+        </Button>
         <DropdownButton
           disabled={generatingBuilds || !characterKey || !optimizationTarget}
           sx={{ borderRadius: '4px 0px 0px 4px' }}

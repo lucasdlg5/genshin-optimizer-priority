@@ -47,6 +47,8 @@ export type ArtSetExclusionKey =
   | 'rainbow'
 export type ArtSetExclusion = Partial<Record<ArtSetExclusionKey, (2 | 4)[]>>
 
+const defaultArtSetExclusion: ArtSetExclusion = { rainbow: [2, 4] }
+
 const statFilterSettingSchema = z.object({
   value: z.number().catch(0),
   disabled: zodBoolean(),
@@ -166,6 +168,11 @@ export class OptConfigDataManager extends DataManager<
     if (!result.success) return undefined
 
     const { ...data } = result.data
+    if (!data.artSetExclusion.rainbow)
+      data.artSetExclusion = {
+        ...defaultArtSetExclusion,
+        ...data.artSetExclusion,
+      }
     const { upOptReshapeRolls } = data
     let {
       artExclusion,
