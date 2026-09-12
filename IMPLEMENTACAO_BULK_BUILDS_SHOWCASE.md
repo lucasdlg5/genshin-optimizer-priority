@@ -208,7 +208,7 @@ Se a convenção atual indicar que a configuração deve ser um `DataManager` em
 - [ ] Implementar equipe temporária solo sem persistir lixo no banco.
 - [x] Implementar seleção de personagem dentro de equipes salvas na validação/resolução da fila.
 - [x] Implementar fila sequencial, cancelamento e erro.
-- [ ] Testar que a ordem da fila é determinística e que o próximo item só começa após o anterior terminar.
+- [x] Testar que a ordem da fila é determinística e que o próximo item só começa após o anterior terminar.
 
 ### Fase 4 — página Bulk Builds
 
@@ -233,7 +233,7 @@ Se a convenção atual indicar que a configuração deve ser um `DataManager` em
 - [ ] Executar typecheck/lint/format pelos alvos Nx afetados.
 - [ ] Validar migração com banco antigo e banco vazio.
 - [ ] Validar acessibilidade básica dos cards, checkboxes, modal e progresso.
-- [ ] Atualizar READMEs e este arquivo com o estado real de cada item.
+- [x] Atualizar READMEs e este arquivo com o estado real de cada item.
 
 ## Critérios de aceitação
 
@@ -258,6 +258,13 @@ Se a convenção atual indicar que a configuração deve ser um `DataManager` em
 - **Performance**: a fila deve liberar dados/resultados do item anterior quando possível e evitar renderizações de toda a grade a cada atualização de progresso.
 
 ## Registro de execução
+
+### Fase inicial - concluída
+
+- Commit `5b619c98`: fundação de prioridade, persistência, página Bulk Builds, fila, navegação e integração transitória do filtro do otimizador.
+- Commit posterior: ordenação determinística da fila pela prioridade e testes de execução sequencial/resolução de equipe.
+- O solver real continua deliberadamente não conectado: a geração existente depende de `TeamCharacterContext`, `DataContext` e estado React da aba `TabOptimize`. A página informa o erro explicitamente em vez de simular sucesso ou alterar builds.
+- O próximo trabalho necessário para geração real é extrair o corpo de `generateBuilds` para um serviço compartilhado que receba uma equipe em memória, incluindo uma representação Solo sem persistência.
 
 ### Concluído nesta sessão
 

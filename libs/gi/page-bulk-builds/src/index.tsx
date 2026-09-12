@@ -11,7 +11,11 @@ import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BulkBuildCharacterCard } from './BulkBuildCharacterCard'
 import { BulkBuildProgress } from './BulkBuildProgress'
-import { BulkBuildQueue, createSolverIntegrationError, validateBulkBuildSelections } from './bulkBuildQueue'
+import {
+  BulkBuildQueue,
+  orderBulkBuildSelections,
+  validateBulkBuildSelections,
+} from './bulkBuildQueue'
 export * from './bulkBuildQueue'
 
 export default function PageBulkBuilds() {
@@ -58,9 +62,15 @@ export default function PageBulkBuilds() {
     }
     setRunning(true)
     setUpdates([])
-    await queue.run(selections, async (_item, signal) => {
+    const orderedSelections = orderBulkBuildSelections(
+      selections,
+      priority.orderedCharacterKeys
+    )
+    await queue.run(orderedSelections, async (_item, signal) => {
       if (signal.aborted) return
-      throw createSolverIntegrationError()
+      throw new Error(
+        'Bulk build solver integration is not available yet. Run this character from the optimizer page.'
+      )
     }, {
       stopOnError: state.stopOnError,
       onUpdate: (update) => setUpdates((current) => [...current.filter((item) => item.index !== update.index), update]),
