@@ -9,7 +9,9 @@
   "button": {
     "deleteWeapons": "Excluir Armas",
     "lockWeapons": "Bloquear Armas",
-    "unlockWeapons": "Desbloquear Armas"
+    "unlockWeapons": "Desbloquear Armas",
+    "levelAll90": "Elevar Todas ao Nv. 90",
+    "refineAll5": "Refinar Todas para R5"
   },
   "buttonHint": "Nota: os botões vermelhos acima apenas se aplicam para <1>armas filtradas<1>",
   "equippedWeapon": "Todas as Armas Equipadas",

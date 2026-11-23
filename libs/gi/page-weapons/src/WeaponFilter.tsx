@@ -17,18 +17,20 @@ import {
 } from '@genshin-optimizer/gi/consts'
 import type { ICachedWeapon } from '@genshin-optimizer/gi/db'
 import { useDatabase } from '@genshin-optimizer/gi/db-ui'
-import { getWeaponStat } from '@genshin-optimizer/gi/stats'
+import { getWeaponStat, weaponHasRefinement } from '@genshin-optimizer/gi/stats'
 import {
   LocationFilterMultiAutocomplete,
   WeaponRarityToggle,
   WeaponToggle,
 } from '@genshin-optimizer/gi/ui'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import BusinessCenterIcon from '@mui/icons-material/BusinessCenter'
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever'
 import LockIcon from '@mui/icons-material/Lock'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import PersonSearchIcon from '@mui/icons-material/PersonSearch'
 import ReplayIcon from '@mui/icons-material/Replay'
+import UpgradeIcon from '@mui/icons-material/Upgrade'
 import {
   Box,
   Button,
@@ -285,21 +287,36 @@ function WeaponFilter({
 function WeaponRedButtons({ weaponIds }: { weaponIds: string[] }) {
   const { t } = useTranslation(['page_weapon', 'ui'])
   const database = useDatabase()
-  const { numDelete, numUnlock, numLock } = useMemo(() => {
-    const weapons = weaponIds.map((id) =>
-      database.weapons.get(id)
-    ) as ICachedWeapon[]
-    const numUnlock = weapons.reduce(
-      (w, weapon) => w + (weapon.lock ? 0 : 1),
-      0
-    )
-    const numLock = weapons.length - numUnlock
-    const numDelete = weapons.reduce(
-      (w, weapon) => w + (weapon.lock || weapon.location ? 0 : 1),
-      0
-    )
-    return { numDelete, numUnlock, numLock }
-  }, [weaponIds, database])
+  const { numDelete, numUnlock, numLock, numCanLevel, numCanRefine } =
+    useMemo(() => {
+      const weapons = weaponIds
+        .map((id) => database.weapons.get(id))
+        .filter((w): w is ICachedWeapon => Boolean(w))
+      const numUnlock = weapons.reduce(
+        (w, weapon) => w + (weapon.lock ? 0 : 1),
+        0
+      )
+      const numLock = weapons.length - numUnlock
+      const numDelete = weapons.reduce(
+        (w, weapon) => w + (weapon.lock || weapon.location ? 0 : 1),
+        0
+      )
+      const numCanLevel = weapons.reduce((count, weapon) => {
+        const rarity = getWeaponStat(weapon.key).rarity
+        const maxLevel = rarity >= 3 ? 90 : 70
+        const maxAsc = rarity >= 3 ? 6 : 4
+        return (
+          count + (weapon.level < maxLevel || weapon.ascension < maxAsc ? 1 : 0)
+        )
+      }, 0)
+      const numCanRefine = weapons.reduce(
+        (count, weapon) =>
+          count +
+          (weaponHasRefinement(weapon.key) && weapon.refinement < 5 ? 1 : 0),
+        0
+      )
+      return { numDelete, numUnlock, numLock, numCanLevel, numCanRefine }
+    }, [weaponIds, database])
 
   const deleteWeapons = () =>
     window.confirm(`Are you sure you want to delete ${numDelete} weapons?`) &&
@@ -316,6 +333,33 @@ function WeaponRedButtons({ weaponIds }: { weaponIds: string[] }) {
     window.confirm(`Are you sure you want to unlock ${numLock} weapons ?`) &&
     weaponIds.map((id) => database.weapons.set(id, { lock: false }))
 
+  const levelAllWeapons = () =>
+    window.confirm(
+      `Are you sure you want to level ${numCanLevel} weapons to Lv. 90 (max)?`
+    ) &&
+    weaponIds.forEach((id) => {
+      const weapon = database.weapons.get(id)
+      if (!weapon) return
+      const rarity = getWeaponStat(weapon.key).rarity
+      const maxLevel = rarity >= 3 ? 90 : 70
+      const maxAsc = (rarity >= 3 ? 6 : 4) as 4 | 6
+      if (weapon.level < maxLevel || weapon.ascension < maxAsc) {
+        database.weapons.set(id, { level: maxLevel, ascension: maxAsc })
+      }
+    })
+
+  const refineAllWeapons = () =>
+    window.confirm(
+      `Are you sure you want to refine ${numCanRefine} weapons to Refinement 5?`
+    ) &&
+    weaponIds.forEach((id) => {
+      const weapon = database.weapons.get(id)
+      if (!weapon) return
+      if (weaponHasRefinement(weapon.key) && weapon.refinement < 5) {
+        database.weapons.set(id, { refinement: 5 })
+      }
+    })
+
   return (
     <Grid
       container
@@ -326,8 +370,8 @@ function WeaponRedButtons({ weaponIds }: { weaponIds: string[] }) {
     >
       <Grid
         size={{
-          xs: 16,
-          sm: 8,
+          xs: 12,
+          sm: 6,
           md: 4,
         }}
       >
@@ -348,8 +392,8 @@ function WeaponRedButtons({ weaponIds }: { weaponIds: string[] }) {
       </Grid>
       <Grid
         size={{
-          xs: 16,
-          sm: 8,
+          xs: 12,
+          sm: 6,
           md: 4,
         }}
       >
@@ -370,8 +414,8 @@ function WeaponRedButtons({ weaponIds }: { weaponIds: string[] }) {
       </Grid>
       <Grid
         size={{
-          xs: 16,
-          sm: 8,
+          xs: 12,
+          sm: 6,
           md: 4,
         }}
       >
@@ -387,6 +431,51 @@ function WeaponRedButtons({ weaponIds }: { weaponIds: string[] }) {
           </Trans>
           <SqBadge sx={{ ml: 1 }} color={numUnlock ? 'success' : 'secondary'}>
             {numUnlock}
+          </SqBadge>
+        </Button>
+      </Grid>
+      <Grid
+        size={{
+          xs: 12,
+          sm: 6,
+        }}
+      >
+        <Button
+          fullWidth
+          color="info"
+          disabled={!numCanLevel}
+          onClick={levelAllWeapons}
+          startIcon={<UpgradeIcon />}
+        >
+          <Trans t={t} i18nKey="button.levelAll90">
+            Level All to Lv. 90
+          </Trans>
+          <SqBadge sx={{ ml: 1 }} color={numCanLevel ? 'success' : 'secondary'}>
+            {numCanLevel}
+          </SqBadge>
+        </Button>
+      </Grid>
+      <Grid
+        size={{
+          xs: 12,
+          sm: 6,
+        }}
+      >
+        <Button
+          fullWidth
+          color="info"
+          disabled={!numCanRefine}
+          onClick={refineAllWeapons}
+          startIcon={<AutoAwesomeIcon />}
+        >
+          <Trans t={t} i18nKey="button.refineAll5">
+            Refine All to R5
+          </Trans>
+          <SqBadge
+            sx={{ ml: 1 }}
+            color={numCanRefine ? 'success' : 'secondary'}
+          >
+            {numCanRefine}
           </SqBadge>
         </Button>
       </Grid>

@@ -10,7 +10,9 @@
   "button": {
     "deleteWeapons": "Delete Weapons",
     "lockWeapons": "Lock Weapons",
-    "unlockWeapons": "Unlock Weapons"
+    "unlockWeapons": "Unlock Weapons",
+    "levelAll90": "Level All to Lv. 90",
+    "refineAll5": "Refine All to R5"
   },
   "buttonHint": "Note: the red buttons above only apply to <1>filtered weapons<1>",
   "equippedWeapon": "All Equipped Weapons",
