@@ -186,11 +186,17 @@ export default function TabBuild() {
     useTeammateBuild,
     optWeapon,
   } = buildSetting
-  const { builds: buildsDb, buildDate } = useGeneratedBuildList(
-    generatedBuildListId ?? ''
-  ) ?? { builds: [] as GeneratedBuild[] }
+  const {
+    builds: buildsDb,
+    weaponBuilds: weaponBuildsDb,
+    buildDate,
+  } = useGeneratedBuildList(generatedBuildListId ?? '') ?? {
+    builds: [] as GeneratedBuild[],
+    weaponBuilds: undefined as GeneratedBuild[] | undefined,
+  }
 
   const builds = useConstObj(buildsDb)
+  const weaponBuilds = useConstObj(weaponBuildsDb ?? [])
   const optimizationTarget = useConstObj(optimizationTargetDb)
   const { data } = useContext(DataContext)
   const compareData = useCompareData()
@@ -432,11 +438,11 @@ export default function TabBuild() {
 
     try {
       const allWeaponBuilds: Array<SolverBuild & { weaponId: string }> = []
+      const bestBuildPerWeapon: Array<SolverBuild & { weaponId: string }> = []
       const mergedPlotByX = new Map<
         number,
         { value: number; plot: number; artifactIds: string[]; weaponId: string }
       >()
-      let globalThreshold = Number.NEGATIVE_INFINITY
       let targetNodeForPlot: NumNode | undefined
       let plotBaseNumNodeForPlot: NumNode | undefined
       let hasAnyResults = false
@@ -503,7 +509,6 @@ export default function TabBuild() {
 
           topN: maxBuildsToShow,
           plotBase: plotBaseNode,
-          initialThreshold: globalThreshold,
         }
 
         activeWeaponStatus = {
@@ -562,21 +567,18 @@ export default function TabBuild() {
           results.map((x) => x.builds),
           maxBuildsToShow
         )
+        if (optWeapon && weaponBuilds.length > 0) {
+          bestBuildPerWeapon.push({ ...weaponBuilds[0], weaponId: weapon.id })
+        }
         for (const build of weaponBuilds) {
           allWeaponBuilds.push({ ...build, weaponId: weapon.id })
         }
         allWeaponBuilds.sort((a, b) => b.value - a.value)
         if (allWeaponBuilds.length > maxBuildsToShow)
           allWeaponBuilds.length = maxBuildsToShow
-
-        if (allWeaponBuilds.length >= maxBuildsToShow) {
-          globalThreshold = Math.max(
-            globalThreshold,
-            allWeaponBuilds[maxBuildsToShow - 1].value
-          )
-        }
       }
 
+      bestBuildPerWeapon.sort((a, b) => b.value - a.value)
       cancelToken.current = () => {}
 
       if (plotBaseNumNodeForPlot && targetNodeForPlot) {
@@ -607,15 +609,20 @@ export default function TabBuild() {
       if (process.env['NODE_ENV'] === 'development')
         console.log('Build Result', allWeaponBuilds)
 
+      const mapSolverBuild = (build: SolverBuild & { weaponId: string }) => ({
+        artifactIds: objKeyMap(allArtifactSlotKeys, (slotKey) =>
+          build.artifactIds.find(
+            (aId) => database.arts.get(aId)?.slotKey === slotKey
+          )
+        ),
+        weaponId: build.weaponId,
+      })
+
       database.optConfigs.newOrSetGeneratedBuildList(optConfigId, {
-        builds: allWeaponBuilds.map((build) => ({
-          artifactIds: objKeyMap(allArtifactSlotKeys, (slotKey) =>
-            build.artifactIds.find(
-              (aId) => database.arts.get(aId)?.slotKey === slotKey
-            )
-          ),
-          weaponId: build.weaponId,
-        })),
+        builds: allWeaponBuilds.map(mapSolverBuild),
+        ...(optWeapon && bestBuildPerWeapon.length > 0
+          ? { weaponBuilds: bestBuildPerWeapon.map(mapSolverBuild) }
+          : {}),
         buildDate: Date.now(),
       })
 
@@ -706,6 +713,14 @@ export default function TabBuild() {
     [t]
   )
   const getNormBuildLabel = useCallback((index: number) => `#${index + 1}`, [])
+  const getWeaponBuildLabel = useCallback(
+    (index: number) =>
+      t('weaponFilter.weaponBuildLabel', {
+        count: index + 1,
+        defaultValue: `Weapon #${index + 1}`,
+      }),
+    [t]
+  )
 
   const buildShowingCount =
     builds.length + (graphBuilds ? graphBuilds.length : 0)
@@ -1047,12 +1062,13 @@ export default function TabBuild() {
                 )}
               </Typography>
               <Button
-                disabled={!builds.length}
+                disabled={!builds.length && !weaponBuilds.length}
                 color="error"
                 onClick={() => {
                   setGraphBuilds(undefined)
                   database.optConfigs.newOrSetGeneratedBuildList(optConfigId, {
                     builds: [],
+                    weaponBuilds: [],
                     buildDate: 0,
                   })
                 }}
@@ -1103,6 +1119,31 @@ export default function TabBuild() {
         getLabel={getNormBuildLabel}
         mainStatAssumptionLevel={mainStatAssumptionLevel}
       />
+      {weaponBuilds.length > 0 && (
+        <>
+          <CardThemed bgt="light">
+            <CardContent
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+              }}
+            >
+              <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                {t('weaponFilter.perWeaponTitle', 'Best Build per Weapon')}
+              </Typography>
+              <SqBadge color="info">{weaponBuilds.length}</SqBadge>
+            </CardContent>
+          </CardThemed>
+          <BuildList
+            builds={weaponBuilds}
+            compareData={compareData}
+            disabled={!!generatingBuilds}
+            getLabel={getWeaponBuildLabel}
+            mainStatAssumptionLevel={mainStatAssumptionLevel}
+          />
+        </>
+      )}
     </Box>
   )
 }

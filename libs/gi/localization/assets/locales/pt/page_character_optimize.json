@@ -142,6 +142,8 @@
     "noWeapons": "Nenhuma arma corresponde aos filtros atuais.",
     "condTitle": "Condicionais de Passivas das Armas",
     "condDesc": "Configure as passivas condicionais das armas elegíveis abaixo para que seus efeitos sejam considerados ao calcular a melhor arma.",
-    "noWeaponConds": "Nenhuma das armas elegíveis atualmente possui condicionais configuráveis."
+    "noWeaponConds": "Nenhuma das armas elegíveis atualmente possui condicionais configuráveis.",
+    "perWeaponTitle": "Melhor Build por Arma",
+    "weaponBuildLabel": "Arma #{{count}}"
   }
 }
