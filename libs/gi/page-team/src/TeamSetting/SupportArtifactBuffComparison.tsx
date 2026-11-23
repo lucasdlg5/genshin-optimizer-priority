@@ -267,7 +267,7 @@ export const SupportArtifactBuffComparison = memo(
             artSet: { [spec.setKey]: constant(4) },
             conditional: {
               [spec.setKey]: condNodes,
-            } as Data['conditional'],
+            } as unknown as Data['conditional'],
           }
           simTeamData[carrierKey] = [injectedData, ...cleanedCarrierData]
 
@@ -491,10 +491,16 @@ export const SupportArtifactBuffComparison = memo(
                     <InfoTooltip
                       title={
                         <Box>
-                          <Typography variant="caption" display="block">
+                          <Typography
+                            variant="caption"
+                            sx={{ display: 'block' }}
+                          >
                             {desc}
                           </Typography>
-                          <Typography variant="caption" display="block">
+                          <Typography
+                            variant="caption"
+                            sx={{ display: 'block' }}
+                          >
                             Δ {absDiffStr}
                           </Typography>
                         </Box>
