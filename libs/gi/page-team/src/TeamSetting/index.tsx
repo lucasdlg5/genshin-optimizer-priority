@@ -35,6 +35,7 @@ import { useNavigate } from 'react-router-dom'
 import BuildDropdown from '../BuildDropdown'
 import { LoadoutDropdown } from '../LoadoutDropdown'
 import { ResonanceDisplay } from './ResonanceDisplay'
+import { SupportArtifactBuffComparison } from './SupportArtifactBuffComparison'
 import { TeammateDisplay } from './TeamComponents'
 import TeamExportModal from './TeamExportModal'
 
@@ -385,6 +386,14 @@ function CharSelButton({
         <Button disabled color="info">
           {t('teamSettings.onFieldBtn')}
         </Button>
+      )}
+      {index === 0 && (
+        <SupportArtifactBuffComparison
+          teamId={teamId}
+          teamCharId={teamCharId}
+          characterKey={characterKey}
+          teamData={teamData}
+        />
       )}
       {dataContextValue && (
         <TeammateDisplay

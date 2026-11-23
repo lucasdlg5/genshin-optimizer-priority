@@ -15,5 +15,14 @@
   "loadout": {
     "name": "Nome do Loadout",
     "desc": "Descrição do Loadout"
+  },
+  "teamSettings": {
+    "supportArtBuffs": {
+      "title": "Buffs de Artefatos Suporte",
+      "noTarget": "Selecione um alvo de otimização na aba Otimizar para comparar os buffs de artefatos suporte.",
+      "activeInTeam": "Ativos:",
+      "modeAdd": "Simular adicionar buff ao time",
+      "modeReplace": "Substituir set de:"
+    }
   }
 }

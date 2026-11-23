@@ -39,7 +39,14 @@
     "deleteBtn": "Delete Team",
     "addCharBtn": "Add Character",
     "toFieldBtn": "To Field",
-    "onFieldBtn": "On-field Character"
+    "onFieldBtn": "On-field Character",
+    "supportArtBuffs": {
+      "title": "Support Artifact Buffs",
+      "noTarget": "Select an Optimization Target in the Optimize tab to compare support artifact buffs.",
+      "activeInTeam": "Active:",
+      "modeAdd": "Simulate adding buff to team",
+      "modeReplace": "Replace set on:"
+    }
   },
   "exportModal": {
     "msg": "Copied team data to clipboard.",
