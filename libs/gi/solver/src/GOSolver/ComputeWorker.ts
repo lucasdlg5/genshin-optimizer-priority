@@ -24,12 +24,13 @@ export class ComputeWorker {
   callback: (interim: Interim) => void
 
   constructor(
-    { arts, optTarget, constraints, plotBase, topN }: Setup,
+    { arts, optTarget, constraints, plotBase, topN, initialThreshold }: Setup,
     callback: (interim: Interim) => void
   ) {
     this.arts = arts
     this.min = constraints.map((x) => x.min)
     this.topN = topN
+    this.threshold = initialThreshold ?? Number.NEGATIVE_INFINITY
     this.callback = callback
     this.nodes = constraints.map((x) => x.value)
     this.nodes.push(optTarget)

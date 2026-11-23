@@ -127,5 +127,21 @@
     "newArt": "Novo Artefato",
     "oldArt": "Artefato Anterior",
     "tcArt": "Artefato Teorizado"
+  },
+  "weaponFilter": {
+    "title": "Otimização de Arma",
+    "optimizeWeapon": "Otimizar Arma",
+    "condLabel": "Condicionais de Arma",
+    "modalTitle": "Filtro e Condicionais de Armas",
+    "levelFilter": "Filtro de Nível de Arma",
+    "useEquipped": "Usar Armas Equipadas",
+    "useTeammate": "Usar Armas dos Aliados",
+    "eligibleWeapons": "Armas Elegíveis",
+    "includeAll": "Incluir Todas",
+    "excludeAll": "Excluir Todas",
+    "noWeapons": "Nenhuma arma corresponde aos filtros atuais.",
+    "condTitle": "Condicionais de Passivas das Armas",
+    "condDesc": "Configure as passivas condicionais das armas elegíveis abaixo para que seus efeitos sejam considerados ao calcular a melhor arma.",
+    "noWeaponConds": "Nenhuma das armas elegíveis atualmente possui condicionais configuráveis."
   }
 }

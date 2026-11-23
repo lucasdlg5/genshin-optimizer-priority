@@ -179,5 +179,21 @@
     "newArt": "New Artifact",
     "oldArt": "Old Artifact",
     "tcArt": "TC Artifact"
+  },
+  "weaponFilter": {
+    "title": "Weapon Optimization",
+    "optimizeWeapon": "Optimize Weapon",
+    "condLabel": "Weapon Conditionals",
+    "modalTitle": "Weapon Filter & Conditionals",
+    "levelFilter": "Weapon Level Filter",
+    "useEquipped": "Use Equipped Weapons",
+    "useTeammate": "Use Teammates' Weapons",
+    "eligibleWeapons": "Eligible Weapons",
+    "includeAll": "Include All",
+    "excludeAll": "Exclude All",
+    "noWeapons": "No weapons match the current filters.",
+    "condTitle": "Weapon Passive Conditionals",
+    "condDesc": "Configure conditional passives for eligible weapons below so their effects are included when calculating the best weapon.",
+    "noWeaponConds": "None of the currently eligible weapons have configurable conditionals."
   }
 }

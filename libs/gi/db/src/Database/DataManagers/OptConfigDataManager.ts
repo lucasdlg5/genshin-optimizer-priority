@@ -120,6 +120,12 @@ const optConfigSchema = z.object({
   upOptReshapeRolls: zodClampedNumber(2, 4, 2),
   upOptDefine: zodBoolean(),
   upOptDefineSubstats: zodFilteredArray(allSubstatKeys, []),
+  optWeapon: zodBoolean(),
+  weaponLevelLow: zodClampedNumber(1, 90, 1),
+  weaponLevelHigh: zodClampedNumber(1, 90, 90),
+  useEquippedWeapon: zodBoolean(),
+  useTeammateWeapon: zodBoolean(),
+  weaponExclusion: z.array(z.string()).catch([]),
 })
 export type OptConfig = z.infer<typeof optConfigSchema>
 
@@ -150,11 +156,19 @@ export class OptConfigDataManager extends DataManager<
       levelHigh,
       upOptLevelLow,
       upOptLevelHigh,
+      weaponExclusion,
+      weaponLevelLow,
+      weaponLevelHigh,
     } = data
 
     // Business logic: filter artExclusion to only IDs that exist in database
     artExclusion = [...new Set(artExclusion)].filter((id) =>
       this.database.arts.keys.includes(id)
+    )
+
+    // Business logic: filter weaponExclusion to only IDs that exist in database
+    weaponExclusion = [...new Set(weaponExclusion)].filter((id) =>
+      this.database.weapons.keys.includes(id)
     )
 
     // Business logic: filter excludedLocations to valid chars, exclude self
@@ -193,6 +207,10 @@ export class OptConfigDataManager extends DataManager<
     upOptLevelLow = clamp(upOptLevelLow, upOptLevelLow, upOptLevelHigh)
     upOptLevelHigh = clamp(upOptLevelHigh, upOptLevelLow, upOptLevelHigh)
 
+    // Business logic: ensure weaponLevelLow <= weaponLevelHigh
+    weaponLevelLow = clamp(weaponLevelLow, weaponLevelLow, weaponLevelHigh)
+    weaponLevelHigh = clamp(weaponLevelHigh, weaponLevelLow, weaponLevelHigh)
+
     return {
       ...data,
       artExclusion,
@@ -203,6 +221,9 @@ export class OptConfigDataManager extends DataManager<
       upOptLevelLow,
       upOptLevelHigh,
       upOptReshapeRolls,
+      weaponExclusion,
+      weaponLevelLow,
+      weaponLevelHigh,
     }
   }
   new(data: Partial<OptConfig> = {}) {
@@ -223,6 +244,7 @@ export class OptConfigDataManager extends DataManager<
       useExcludedArts,
       excludedLocations,
       artExclusion,
+      weaponExclusion,
       generatedBuildListId,
       ...rest
     } = optConfig

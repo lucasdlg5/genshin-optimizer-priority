@@ -120,6 +120,7 @@ export default function ChartCard({
     const currentBuild = allArtifactSlotKeys.map(
       (slotKey) => data?.get(input.art[slotKey].id).value ?? ''
     )
+    const currentWeaponId = data?.get(input.weapon.id).value
     // Shape the data so we know the current and highlighted builds
     const points = chartData.data
       .map(({ value: y, plot: x, artifactIds, weaponId }) => {
@@ -133,7 +134,9 @@ export default function ChartCard({
         })
         const datumBuildMap = objKeyMap(artifactIdsArr, (_) => true)
 
-        const isCurrentBuild = currentBuild.every((aId) => datumBuildMap[aId])
+        const isCurrentBuild =
+          (!currentWeaponId || weaponId === currentWeaponId) &&
+          currentBuild.every((aId) => datumBuildMap[aId])
         if (isCurrentBuild) {
           enhancedDatum.current = y
           // Remove the Y-value so there are not 2 dots displayed for these builds

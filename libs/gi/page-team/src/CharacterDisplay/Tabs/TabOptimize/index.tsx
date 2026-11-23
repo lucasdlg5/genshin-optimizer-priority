@@ -29,7 +29,11 @@ import {
   allArtifactSlotKeys,
   charKeyToLocCharKey,
 } from '@genshin-optimizer/gi/consts'
-import type { GeneratedBuild, OptConfig } from '@genshin-optimizer/gi/db'
+import type {
+  GeneratedBuild,
+  ICachedWeapon,
+  OptConfig,
+} from '@genshin-optimizer/gi/db'
 import { maxBuildsToShowList } from '@genshin-optimizer/gi/db'
 import {
   TeamCharacterContext,
@@ -41,7 +45,7 @@ import {
   useTeammateArtifactIds,
   useWeapon,
 } from '@genshin-optimizer/gi/db-ui'
-import type { OptProblemInput } from '@genshin-optimizer/gi/solver'
+import type { OptProblemInput, SolverBuild } from '@genshin-optimizer/gi/solver'
 import { GOSolver, mergeBuilds, mergePlot } from '@genshin-optimizer/gi/solver'
 import { compactArtifacts } from '@genshin-optimizer/gi/solver-tc'
 import {
@@ -121,7 +125,13 @@ import OptimizationTargetSelector from './Components/OptimizationTargetSelector'
 import StatFilterCard from './Components/StatFilterCard'
 import UseEquipped from './Components/UseEquipped'
 import { UseTeammateArt } from './Components/UseTeammateArt'
+import { WeaponFilter } from './Components/WeaponFilter'
 import ScalesWith from './ScalesWith'
+import {
+  deduplicateAndSortWeapons,
+  getFilteredWeapons,
+  useTeammateWeaponIds,
+} from './weaponFilterUtil'
 
 function initBuildStatus(): BuildStatus {
   return {
@@ -174,6 +184,7 @@ export default function TabBuild() {
     levelHigh,
     generatedBuildListId,
     useTeammateBuild,
+    optWeapon,
   } = buildSetting
   const { builds: buildsDb, buildDate } = useGeneratedBuildList(
     generatedBuildListId ?? ''
@@ -189,7 +200,27 @@ export default function TabBuild() {
   const isSM = ['xs', 'sm'].includes(useMediaQueryUp())
   const deferredBuildSetting = useDeferredValue(buildSetting)
   const teammateArtifactIds = useTeammateArtifactIds()
+  const teammateWeaponIds = useTeammateWeaponIds()
   const allArts = useDataManagerValues(database.arts)
+  const allWeapons = useDataManagerValues(database.weapons)
+  const currentWeaponId = database.teams.getLoadoutWeapon(loadoutDatum)?.id
+  const filteredWeapons = useMemo(
+    () =>
+      getFilteredWeapons({
+        allWeapons,
+        characterKey,
+        optConfig: deferredBuildSetting,
+        teammateWeaponIds,
+        currentWeaponId,
+      }),
+    [
+      allWeapons,
+      characterKey,
+      deferredBuildSetting,
+      teammateWeaponIds,
+      currentWeaponId,
+    ]
+  )
   /**
    * Filter the artifacts down to the pool the optimizer is allowed to use for
    * the given opt config. The opt config is passed in as an argument (instead
@@ -318,9 +349,26 @@ export default function TabBuild() {
       mainStatAssumptionLevel,
       allowPartial,
       maxBuildsToShow,
+      optWeapon,
     } = buildSetting
     if (!characterKey || !optimizationTarget) return
     if (notificationRef.current) Notification?.requestPermission()
+
+    const loadoutWeapon = database.teams.getLoadoutWeapon(loadoutDatum)
+    const weaponsToOptimize: ICachedWeapon[] = optWeapon
+      ? deduplicateAndSortWeapons(
+          getFilteredWeapons({
+            allWeapons,
+            characterKey,
+            optConfig: buildSetting,
+            teammateWeaponIds,
+            currentWeaponId: loadoutWeapon?.id,
+          }),
+          characterKey,
+          loadoutWeapon?.id
+        )
+      : [loadoutWeapon]
+    if (!weaponsToOptimize.length) return
 
     // Filter with the latest settings rather than the deferred `filteredArts`,
     // so that a build started right after a settings change does not use an
@@ -331,63 +379,17 @@ export default function TabBuild() {
       allowPartial
     )
 
-    const teamData = getTeamData(
-      database,
-      teamId,
-      teamCharId,
-      mainStatAssumptionLevel,
-      []
-    )
-    if (!teamData) return
-    const workerData = uiDataForTeam(teamData.teamData, gender, activeCharKey)[
-      characterKey
-    ]?.target.data[0]
-    if (!workerData) return
-    Object.assign(workerData, mergeData([workerData, dynamicData])) // Mark art fields as dynamic
-    const unoptimizedOptimizationTargetNode = objPathValue(
-      workerData.display ?? {},
-      optimizationTarget
-    ) as NumNode | undefined
-    if (!unoptimizedOptimizationTargetNode) return
-    const targetNode = unoptimizedOptimizationTargetNode
-    const valueFilter = statFilterToNumNode(workerData, statFilters)
-
     setChartData(undefined)
 
     const cancelled = new Promise<void>((r) => (cancelToken.current = r))
+    const cancellationError = new Error()
+    let isCancelled = false
+    let activeSolver: GOSolver | undefined
+    cancelled.then(() => {
+      isCancelled = true
+      activeSolver?.cancel(cancellationError)
+    })
 
-    const unoptimizedNodes = [
-      ...valueFilter.map((x) => x.value),
-      unoptimizedOptimizationTargetNode,
-    ]
-    const minimum = [
-      ...valueFilter.map((x) => x.minimum),
-      Number.NEGATIVE_INFINITY,
-    ]
-    const plotBaseNumNode: NumNode =
-      plotBase && objPathValue(workerData.display ?? {}, plotBase)
-    if (plotBaseNumNode) {
-      unoptimizedNodes.push(plotBaseNumNode)
-      minimum.push(Number.NEGATIVE_INFINITY)
-    }
-
-    const nodes = optimize(
-      unoptimizedNodes,
-      workerData,
-      ({ path: [p] }) => p !== 'dyn'
-    )
-    const plotBaseNode = plotBaseNumNode ? nodes.pop() : undefined
-    const optimizationTargetNode = nodes.pop()!
-
-    const problem: OptProblemInput = {
-      arts: split,
-      optimizationTarget: optimizationTargetNode,
-      exclusion: artSetExclusion,
-      constraints: nodes.map((value, i) => ({ value, min: minimum[i] })),
-
-      topN: maxBuildsToShow,
-      plotBase: plotBaseNode,
-    }
     const status: Omit<BuildStatus, 'type'> = {
       tested: 0,
       failed: 0,
@@ -396,77 +398,230 @@ export default function TabBuild() {
       testedPerSecond: 0,
       skippedPerSecond: 0,
       startTime: performance.now(),
+      weaponIndex: 1,
+      weaponTotal: weaponsToOptimize.length,
     }
-    const statusUpdateTimer = setInterval(
-      () => setBuildStatus({ type: 'active', ...status }),
-      100
-    )
+    let baseTested = 0
+    let baseFailed = 0
+    let baseSkipped = 0
+    let baseTotal = 0
+    let activeWeaponStatus: Omit<BuildStatus, 'type'> = {
+      tested: 0,
+      failed: 0,
+      skipped: 0,
+      total: 0,
+      testedPerSecond: 0,
+      skippedPerSecond: 0,
+    }
 
-    const cancellationError = new Error()
+    const syncStatus = () => {
+      status.tested = baseTested + activeWeaponStatus.tested
+      status.failed = baseFailed + activeWeaponStatus.failed
+      status.skipped = baseSkipped + activeWeaponStatus.skipped
+      status.total = Number.isFinite(activeWeaponStatus.total)
+        ? baseTotal + activeWeaponStatus.total
+        : Number.NaN
+      status.testedPerSecond = activeWeaponStatus.testedPerSecond
+      status.skippedPerSecond = activeWeaponStatus.skippedPerSecond
+    }
+
+    const statusUpdateTimer = setInterval(() => {
+      syncStatus()
+      setBuildStatus({ type: 'active', ...status })
+    }, 100)
+
     try {
-      const solver = new GOSolver(problem, status, maxWorkers)
-      cancelled.then(() => solver.cancel(cancellationError))
+      const allWeaponBuilds: Array<SolverBuild & { weaponId: string }> = []
+      const mergedPlotByX = new Map<
+        number,
+        { value: number; plot: number; artifactIds: string[]; weaponId: string }
+      >()
+      let globalThreshold = Number.NEGATIVE_INFINITY
+      let targetNodeForPlot: NumNode | undefined
+      let plotBaseNumNodeForPlot: NumNode | undefined
+      let hasAnyResults = false
 
-      const results = await solver.solve()
-      solver.cancel() // Done using `solver`
+      for (let wIdx = 0; wIdx < weaponsToOptimize.length; wIdx++) {
+        if (isCancelled) throw cancellationError
+        const weapon = weaponsToOptimize[wIdx]
+        status.weaponIndex = wIdx + 1
+
+        const teamData = getTeamData(
+          database,
+          teamId,
+          teamCharId,
+          mainStatAssumptionLevel,
+          [],
+          optWeapon ? weapon : undefined
+        )
+        if (!teamData) continue
+        const workerData = uiDataForTeam(
+          teamData.teamData,
+          gender,
+          activeCharKey
+        )[characterKey]?.target.data[0]
+        if (!workerData) continue
+        Object.assign(workerData, mergeData([workerData, dynamicData])) // Mark art fields as dynamic
+        const unoptimizedOptimizationTargetNode = objPathValue(
+          workerData.display ?? {},
+          optimizationTarget
+        ) as NumNode | undefined
+        if (!unoptimizedOptimizationTargetNode) continue
+        const targetNode = unoptimizedOptimizationTargetNode
+        if (!targetNodeForPlot) targetNodeForPlot = targetNode
+        const valueFilter = statFilterToNumNode(workerData, statFilters)
+
+        const unoptimizedNodes = [
+          ...valueFilter.map((x) => x.value),
+          unoptimizedOptimizationTargetNode,
+        ]
+        const minimum = [
+          ...valueFilter.map((x) => x.minimum),
+          Number.NEGATIVE_INFINITY,
+        ]
+        const plotBaseNumNode: NumNode | undefined =
+          plotBase && objPathValue(workerData.display ?? {}, plotBase)
+        if (plotBaseNumNode) {
+          if (!plotBaseNumNodeForPlot) plotBaseNumNodeForPlot = plotBaseNumNode
+          unoptimizedNodes.push(plotBaseNumNode)
+          minimum.push(Number.NEGATIVE_INFINITY)
+        }
+
+        const nodes = optimize(
+          unoptimizedNodes,
+          workerData,
+          ({ path: [p] }) => p !== 'dyn'
+        )
+        const plotBaseNode = plotBaseNumNode ? nodes.pop() : undefined
+        const optimizationTargetNode = nodes.pop()!
+
+        const problem: OptProblemInput = {
+          arts: split,
+          optimizationTarget: optimizationTargetNode,
+          exclusion: artSetExclusion,
+          constraints: nodes.map((value, i) => ({ value, min: minimum[i] })),
+
+          topN: maxBuildsToShow,
+          plotBase: plotBaseNode,
+          initialThreshold: globalThreshold,
+        }
+
+        activeWeaponStatus = {
+          tested: 0,
+          failed: 0,
+          skipped: 0,
+          total: 0,
+          testedPerSecond: 0,
+          skippedPerSecond: 0,
+        }
+
+        const solver = new GOSolver(problem, activeWeaponStatus, maxWorkers)
+        activeSolver = solver
+        if (isCancelled) {
+          solver.cancel(cancellationError)
+          throw cancellationError
+        }
+
+        const results = await solver.solve()
+        solver.cancel() // Done using `solver`
+        activeSolver = undefined
+        hasAnyResults = true
+
+        baseTested += activeWeaponStatus.tested
+        baseFailed += activeWeaponStatus.failed
+        baseSkipped += activeWeaponStatus.skipped
+        if (Number.isFinite(activeWeaponStatus.total))
+          baseTotal += activeWeaponStatus.total
+        activeWeaponStatus = {
+          tested: 0,
+          failed: 0,
+          skipped: 0,
+          total: 0,
+          testedPerSecond: activeWeaponStatus.testedPerSecond,
+          skippedPerSecond: activeWeaponStatus.skippedPerSecond,
+        }
+        syncStatus()
+
+        if (plotBaseNumNode) {
+          const plotData = mergePlot(results.map((x) => x.plotData!))
+          for (const dataEntry of Object.values(plotData)) {
+            if (!dataEntry || dataEntry.plot === undefined) continue
+            const existing = mergedPlotByX.get(dataEntry.plot)
+            if (!existing || dataEntry.value > existing.value) {
+              mergedPlotByX.set(dataEntry.plot, {
+                value: dataEntry.value,
+                plot: dataEntry.plot,
+                artifactIds: dataEntry.artifactIds,
+                weaponId: weapon.id,
+              })
+            }
+          }
+        }
+
+        const weaponBuilds = mergeBuilds(
+          results.map((x) => x.builds),
+          maxBuildsToShow
+        )
+        for (const build of weaponBuilds) {
+          allWeaponBuilds.push({ ...build, weaponId: weapon.id })
+        }
+        allWeaponBuilds.sort((a, b) => b.value - a.value)
+        if (allWeaponBuilds.length > maxBuildsToShow)
+          allWeaponBuilds.length = maxBuildsToShow
+
+        if (allWeaponBuilds.length >= maxBuildsToShow) {
+          globalThreshold = Math.max(
+            globalThreshold,
+            allWeaponBuilds[maxBuildsToShow - 1].value
+          )
+        }
+      }
 
       cancelToken.current = () => {}
-      const weaponId = database.teams.getLoadoutWeapon(loadoutDatum).id
-      if (plotBaseNumNode) {
-        const plotData = mergePlot(results.map((x) => x.plotData!))
-        const solverBuilds = Object.values(plotData)
-        const targetNodeinfo = targetNode.info && resolveInfo(targetNode.info)
+
+      if (plotBaseNumNodeForPlot && targetNodeForPlot) {
+        const solverBuilds = Array.from(mergedPlotByX.values())
+        const targetNodeinfo =
+          targetNodeForPlot.info && resolveInfo(targetNodeForPlot.info)
         const plotBaseNumNodeInfo =
-          plotBaseNumNode.info && resolveInfo(plotBaseNumNode.info)
-        if (targetNodeinfo?.unit === '%')
-          solverBuilds.forEach(
-            (dataEntry) =>
-              dataEntry && (dataEntry.value = dataEntry.value * 100)
-          )
-        if (plotBaseNumNodeInfo?.unit === '%')
-          solverBuilds.forEach(
-            (dataEntry) =>
-              dataEntry && (dataEntry.plot = (dataEntry.plot ?? 0) * 100)
-          )
+          plotBaseNumNodeForPlot.info &&
+          resolveInfo(plotBaseNumNodeForPlot.info)
+        const valueScale = targetNodeinfo?.unit === '%' ? 100 : 1
+        const plotScale = plotBaseNumNodeInfo?.unit === '%' ? 100 : 1
         setChartData({
-          valueNode: targetNode,
-          plotNode: plotBaseNumNode,
-          data: solverBuilds
-            .filter(notEmpty)
-            .map(({ value, plot, artifactIds }) => ({
-              artifactIds: objKeyMap(allArtifactSlotKeys, (slotKey) =>
-                artifactIds.find(
-                  (aId) => database.arts.get(aId)?.slotKey === slotKey
-                )
-              ),
-              weaponId,
-              value,
-              plot,
-            })),
+          valueNode: targetNodeForPlot,
+          plotNode: plotBaseNumNodeForPlot,
+          data: solverBuilds.map(({ value, plot, artifactIds, weaponId }) => ({
+            artifactIds: objKeyMap(allArtifactSlotKeys, (slotKey) =>
+              artifactIds.find(
+                (aId) => database.arts.get(aId)?.slotKey === slotKey
+              )
+            ),
+            weaponId,
+            value: value * valueScale,
+            plot: plot * plotScale,
+          })),
         })
       }
-      const builds = mergeBuilds(
-        results.map((x) => x.builds),
-        maxBuildsToShow
-      )
+
       if (process.env['NODE_ENV'] === 'development')
-        console.log('Build Result', builds)
+        console.log('Build Result', allWeaponBuilds)
 
       database.optConfigs.newOrSetGeneratedBuildList(optConfigId, {
-        builds: builds.map((build) => ({
+        builds: allWeaponBuilds.map((build) => ({
           artifactIds: objKeyMap(allArtifactSlotKeys, (slotKey) =>
             build.artifactIds.find(
               (aId) => database.arts.get(aId)?.slotKey === slotKey
             )
           ),
-          weaponId,
+          weaponId: build.weaponId,
         })),
         buildDate: Date.now(),
       })
 
       setTimeout(async () => {
         // Using a ref because a user can cancel the notification while the build is going.
-        if (results && notificationRef.current) {
+        if (hasAnyResults && notificationRef.current) {
           audio.play()
           if (!tabFocused.current)
             if (Notification?.permission === 'granted')
@@ -502,6 +657,8 @@ export default function TabBuild() {
     buildSetting,
     characterKey,
     getFilteredArts,
+    allWeapons,
+    teammateWeaponIds,
     database,
     teamId,
     teamCharId,
@@ -578,6 +735,12 @@ export default function TabBuild() {
           }}
         >
           <OptCharacterCard characterKey={characterKey} />
+          <WeaponFilter
+            filteredWeapons={filteredWeapons}
+            teammateWeaponIds={teammateWeaponIds}
+            currentWeaponId={currentWeaponId}
+            disabled={generatingBuilds}
+          />
           <BonusStatsCard />
           <CustomMultiTargetButton />
         </Grid>
@@ -811,7 +974,8 @@ export default function TabBuild() {
                 !characterKey ||
                 !optimizationTarget ||
                 !optimizationTargetNode ||
-                optimizationTargetNode.isEmpty
+                optimizationTargetNode.isEmpty ||
+                (optWeapon && !filteredWeapons.length)
               }
               color={generatingBuilds ? 'error' : 'success'}
               onClick={
@@ -1022,7 +1186,9 @@ const BuildList = memo(function BuildList({
     >
       {builds?.map((build, index) => (
         <DataContextWrapper
-          key={index + Object.values(build.artifactIds).join()}
+          key={`${index}-${build.weaponId ?? ''}-${Object.values(
+            build.artifactIds
+          ).join()}`}
           characterKey={characterKey}
           build={build}
           compareData={compareData}
@@ -1097,7 +1263,9 @@ function CopyTcButton({ build }: { build: GeneratedBuild }) {
   } = useContext(TeamCharacterContext)
 
   const toTc = () => {
-    const weapon = database.teams.getLoadoutWeapon(loadoutDatum)
+    const weapon =
+      (build.weaponId && database.weapons.get(build.weaponId)) ||
+      database.teams.getLoadoutWeapon(loadoutDatum)
     const buildTcId = database.buildTcs.newFromBuild(
       characterKey,
       weapon,

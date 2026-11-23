@@ -15,6 +15,7 @@ export type OptProblemInput = {
 
   topN: number
   plotBase?: OptNode
+  initialThreshold?: number
 }
 
 export type WorkerCommand =
@@ -35,6 +36,7 @@ export interface Setup {
   constraints: { value: OptNode; min: number }[]
   plotBase: OptNode | undefined
   topN: number
+  initialThreshold?: number
 }
 export interface Split {
   command: 'split'

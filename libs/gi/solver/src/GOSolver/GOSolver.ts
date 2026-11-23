@@ -57,6 +57,8 @@ export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
       }
     })
     const { exclusion, topN } = problem
+    const initialThreshold =
+      problem.initialThreshold ?? Number.NEGATIVE_INFINITY
     this.status = status
     this.exclusion = exclusion
     this.topN = topN
@@ -65,7 +67,7 @@ export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
     this.status.skippedPerSecond = 0
     this.buildValues = Array(topN).fill({
       w: undefined as any,
-      val: Number.NEGATIVE_INFINITY,
+      val: initialThreshold,
     })
 
     this.notifiedBroadcast(this.preprocess(problem))
@@ -92,6 +94,7 @@ export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
     topN,
     exclusion,
     constraints,
+    initialThreshold,
   }: OptProblemInput): Setup {
     constraints = constraints.filter((x) => x.min > Number.NEGATIVE_INFINITY)
 
@@ -124,6 +127,7 @@ export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
       optTarget,
       plotBase,
       topN,
+      initialThreshold,
       constraints: nodes.map((value, i) => ({ value, min: minimums[i] })),
     }
   }

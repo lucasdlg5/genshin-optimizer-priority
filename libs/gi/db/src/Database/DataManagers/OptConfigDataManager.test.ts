@@ -118,4 +118,36 @@ describe('OptConfigDataManager', () => {
     const result = optConfigs['validate'](invalid, id)
     expect(result?.excludedLocations).not.toContain(id)
   })
+
+  it('should filter weaponExclusion to only existing weapon IDs', () => {
+    const id = optConfigs.new()
+    const weaponId = database.weapons.new({
+      key: 'DullBlade',
+      level: 1,
+      ascension: 0,
+      refinement: 1,
+      location: '',
+      lock: false,
+    })
+
+    const invalid = {
+      ...optConfigs.get(id),
+      weaponExclusion: [weaponId, 'INVALID_WEAPON_ID'],
+    }
+    const result = optConfigs['validate'](invalid, id)
+    expect(result?.weaponExclusion).toEqual([weaponId])
+  })
+
+  it('should ensure weaponLevelLow <= weaponLevelHigh', () => {
+    const id = optConfigs.new()
+    const invalid = {
+      ...optConfigs.get(id),
+      weaponLevelLow: 80,
+      weaponLevelHigh: 40,
+    }
+    const result = optConfigs['validate'](invalid, id)
+    expect(result?.weaponLevelLow).toBeLessThanOrEqual(
+      result?.weaponLevelHigh ?? 0
+    )
+  })
 })

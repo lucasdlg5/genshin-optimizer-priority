@@ -13,6 +13,8 @@ export type BuildStatus = {
   skippedPerSecond: number // number of configs skipped in the last second (none are tested)
   startTime?: number
   finishTime?: number
+  weaponIndex?: number
+  weaponTotal?: number
 }
 
 const Monospace = styled('strong')({
@@ -34,6 +36,8 @@ export default function BuildAlert({
     skippedPerSecond,
     startTime,
     finishTime,
+    weaponIndex,
+    weaponTotal,
   },
   characterName,
 }: {
@@ -93,13 +97,26 @@ export default function BuildAlert({
   let subtitle = '' as ReactNode
   let progress = undefined as undefined | number
 
+  const weaponProgressText =
+    weaponTotal && weaponTotal > 1 ? (
+      <>
+        {' '}
+        (Weapon{' '}
+        <Monospace>
+          {weaponIndex ?? weaponTotal}/{weaponTotal}
+        </Monospace>
+        )
+      </>
+    ) : null
+
   if (generatingBuilds) {
     progress = ((tested + skipped) / total) * 100
     title = (
       <Typography>
         Generating and testing {testedString}
         {hasTotal ? <>/{unskippedString}</> : undefined} build configurations
-        against the criteria for <b>{characterName}</b>. {skippedText}
+        against the criteria for <b>{characterName}</b>
+        {weaponProgressText}. {skippedText}
       </Typography>
     )
     subtitle = (
@@ -113,7 +130,14 @@ export default function BuildAlert({
     title = (
       <Typography>
         Generated and tested {testedString} Build configurations against the
-        criteria for <b>{characterName}</b>. {skippedText}
+        criteria for <b>{characterName}</b>
+        {weaponTotal && weaponTotal > 1 ? (
+          <>
+            {' '}
+            across <Monospace>{weaponTotal}</Monospace> weapons
+          </>
+        ) : null}
+        . {skippedText}
       </Typography>
     )
     subtitle = (
