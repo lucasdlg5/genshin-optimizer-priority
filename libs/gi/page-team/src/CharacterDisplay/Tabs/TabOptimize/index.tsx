@@ -119,6 +119,7 @@ import type { BuildStatus } from './Components/BuildAlert'
 import BuildAlert from './Components/BuildAlert'
 import ChartCard from './Components/ChartCard'
 import ExcludeArt from './Components/ExcludeArt'
+import { KqmsErCard, KqmsErResultsSummary } from './Components/KqmsErCard'
 import MainStatSelectionCard from './Components/MainStatSelectionCard'
 import { OptCharacterCard } from './Components/OptCharacterCard'
 import OptimizationTargetSelector from './Components/OptimizationTargetSelector'
@@ -126,7 +127,9 @@ import StatFilterCard from './Components/StatFilterCard'
 import UseEquipped from './Components/UseEquipped'
 import { UseTeammateArt } from './Components/UseTeammateArt'
 import { WeaponFilter } from './Components/WeaponFilter'
+import { calculateTeamKqmsEr } from './kqmsErCalc'
 import ScalesWith from './ScalesWith'
+import { useTeamKqmsEr } from './useTeamKqmsEr'
 import {
   deduplicateAndSortWeapons,
   getFilteredWeapons,
@@ -185,7 +188,9 @@ export default function TabBuild() {
     generatedBuildListId,
     useTeammateBuild,
     optWeapon,
+    kqmsErEnabled,
   } = buildSetting
+  const { teamKqms, currentCharErFloor } = useTeamKqmsEr()
   const {
     builds: buildsDb,
     weaponBuilds: weaponBuildsDb,
@@ -356,6 +361,9 @@ export default function TabBuild() {
       allowPartial,
       maxBuildsToShow,
       optWeapon,
+      kqmsErEnabled,
+      kqmsRotationDuration,
+      kqmsEnemyScenario,
     } = buildSetting
     if (!characterKey || !optimizationTarget) return
     if (notificationRef.current) Notification?.requestPermission()
@@ -436,6 +444,8 @@ export default function TabBuild() {
       setBuildStatus({ type: 'active', ...status })
     }, 100)
 
+    const teamObj = database.teams.get(teamId)
+
     try {
       const allWeaponBuilds: Array<SolverBuild & { weaponId: string }> = []
       const bestBuildPerWeapon: Array<SolverBuild & { weaponId: string }> = []
@@ -475,7 +485,61 @@ export default function TabBuild() {
         if (!unoptimizedOptimizationTargetNode) continue
         const targetNode = unoptimizedOptimizationTargetNode
         if (!targetNodeForPlot) targetNodeForPlot = targetNode
-        const valueFilter = statFilterToNumNode(workerData, statFilters)
+
+        let effectiveStatFilters = statFilters
+        if (kqmsErEnabled && teamObj) {
+          const kqmsMembers = teamObj.loadoutData
+            .map((ld, index) => {
+              if (!ld) return undefined
+              const tc = database.teamChars.get(ld.teamCharId)
+              if (!tc) return undefined
+              const dbChar = database.chars.get(tc.key)
+              const memberWeapon =
+                ld.teamCharId === teamCharId && weapon
+                  ? weapon
+                  : database.teams.getLoadoutWeapon(ld)
+              const arts = database.teams.getLoadoutArtifacts(ld)
+              const artifactSetCounts: Record<string, number> = {}
+              for (const art of Object.values(arts)) {
+                if (art?.setKey) {
+                  artifactSetCounts[art.setKey] =
+                    (artifactSetCounts[art.setKey] ?? 0) + 1
+                }
+              }
+              return {
+                characterKey: tc.key,
+                constellation: dbChar?.constellation ?? 0,
+                isOnFieldPrimary: index === 0,
+                weaponKey: memberWeapon?.key,
+                weaponRefinement: memberWeapon?.refinement ?? 1,
+                artifactSetCounts,
+              }
+            })
+            .filter(notEmpty)
+
+          const weaponKqms = calculateTeamKqmsEr({
+            members: kqmsMembers,
+            gender,
+            rotationDuration: kqmsRotationDuration,
+            enemyScenario: kqmsEnemyScenario,
+          })
+          const erFloor =
+            weaponKqms.members.find((m) => m.characterKey === characterKey)
+              ?.recommendedErPercent ?? 100
+          const erPathStr = JSON.stringify(['basic', 'enerRech_'])
+          effectiveStatFilters = {
+            ...statFilters,
+            [erPathStr]: [
+              ...(statFilters[erPathStr] ?? []),
+              { value: erFloor, disabled: false },
+            ],
+          }
+        }
+
+        const valueFilter = statFilterToNumNode(
+          workerData,
+          effectiveStatFilters
+        )
 
         const unoptimizedNodes = [
           ...valueFilter.map((x) => x.value),
@@ -877,6 +941,11 @@ export default function TabBuild() {
 
           {/*Minimum Final Stat Filter */}
           <StatFilterCard disabled={generatingBuilds} />
+          <KqmsErCard
+            teamKqms={teamKqms}
+            currentCharErFloor={currentCharErFloor}
+            disabled={generatingBuilds}
+          />
           <AdResponsive dataAdSlot="7724855772" bgt="light" Ad={GOAdWrapper} />
         </Grid>
       </Grid>
@@ -1100,6 +1169,13 @@ export default function TabBuild() {
             </Grid>
           </CardContent>
         </CardThemed>
+      )}
+
+      {optimizationTarget && kqmsErEnabled && (
+        <KqmsErResultsSummary
+          teamKqms={teamKqms}
+          highlightCharKey={characterKey}
+        />
       )}
 
       {graphBuilds && (

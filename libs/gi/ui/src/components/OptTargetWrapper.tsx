@@ -20,7 +20,7 @@ export function OptTargetWrapper({ children }: { children: ReactNode }) {
   const buildSetting = useOptConfig(optConfigId)!
   const dataContextValue = useContext(DataContext)
   const optTargetContextObj = useMemo((): OptTargetContextObj => {
-    const { statFilters, optimizationTarget } = buildSetting
+    const { statFilters, optimizationTarget, kqmsErEnabled } = buildSetting
     if (!optimizationTarget) return defOptTargetContextObj
 
     const { nodes } = optimizeNodesForScaling(
@@ -31,9 +31,12 @@ export function OptTargetWrapper({ children }: { children: ReactNode }) {
     )
     if (!nodes) return defOptTargetContextObj
 
+    const scalesWith = getScalesWith(nodes)
+    if (kqmsErEnabled) scalesWith.add('enerRech_')
+
     return {
       target: optimizationTarget,
-      scalesWith: getScalesWith(nodes),
+      scalesWith,
     }
   }, [buildSetting, characterKey, dataContextValue.teamData])
 

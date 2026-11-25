@@ -126,6 +126,9 @@ const optConfigSchema = z.object({
   useEquippedWeapon: zodBoolean(),
   useTeammateWeapon: zodBoolean(),
   weaponExclusion: z.array(z.string()).catch([]),
+  kqmsErEnabled: zodBoolean(),
+  kqmsRotationDuration: zodClampedNumber(12, 35, 20),
+  kqmsEnemyScenario: z.enum(['boss', 'aoe']).catch('boss'),
 })
 export type OptConfig = z.infer<typeof optConfigSchema>
 

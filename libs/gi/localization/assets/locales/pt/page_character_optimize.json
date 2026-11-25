@@ -145,5 +145,31 @@
     "noWeaponConds": "Nenhuma das armas elegíveis atualmente possui condicionais configuráveis.",
     "perWeaponTitle": "Melhor Build por Arma",
     "weaponBuildLabel": "Arma #{{count}}"
+  },
+  "kqmsEr": {
+    "title": "Recarga Mínima KQMS",
+    "tooltip": "Calcula automaticamente a Recarga de Energia mínima (ER Floor) necessária para usar o Supremo a cada rotação seguindo as constantes de Theorycraft (KQMS), aplicando esse piso como restrição obrigatória na otimização.",
+    "enableBtn": "Ativar Recarga Mínima KQMS",
+    "modalTitle": "Configuração & Análise de Recarga Mínima KQMS",
+    "rotationDuration": "Duração da Rotação (s):",
+    "enemyScenario": "Partículas de Inimigos:",
+    "scenarioBoss": "Chefe / Alvo Único (Conservador: 1 Orbe Branco)",
+    "scenarioAoe": "Multi-Target / AoE (2 Orbes + 3 Partículas)",
+    "resultsTitle": "Análise de Recarga Mínima KQMS da Equipe",
+    "rotBadge": "Rotação: {{seconds}}s",
+    "skillsBadge": "{{count}} Skills",
+    "favBadge": "{{count}} Procs Favonius",
+    "bossShort": "Alvo Único (1 Orbe Branco)",
+    "aoeShort": "AoE (Multi-Target)",
+    "colChar": "Personagem",
+    "colBurstCost": "Custo do Supremo",
+    "colFlatEnergy": "Energia Fixa",
+    "colBaseEnergy": "Energia Base / Rotação",
+    "colMinEr": "ER Mínima (+10% margem)",
+    "activeTargetBadge": "Alvo",
+    "recTitle": "Recomendações de Otimização (ER > 200% detectado):",
+    "recFavonius": "Considere equipar uma Arma de Favonius em um suporte da equipe (+6.0 / +3.6 de Energia Base neutra por proc) para reduzir drasticamente o piso de ER.",
+    "recBattery": "Nenhum aliado do mesmo elemento ({{ele}}) na equipe: incluir uma bateria do mesmo elemento triplica a energia por partícula (3.0/1.8 vs 1.0/0.6).",
+    "recFunnel": "Ajuste a rotação para funilar partículas (usar a Habilidade Elemental do aliado e trocar imediatamente) para "
   }
 }

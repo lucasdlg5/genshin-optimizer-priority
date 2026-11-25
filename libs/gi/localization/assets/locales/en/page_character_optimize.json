@@ -197,5 +197,31 @@
     "noWeaponConds": "None of the currently eligible weapons have configurable conditionals.",
     "perWeaponTitle": "Best Build per Weapon",
     "weaponBuildLabel": "Weapon #{{count}}"
+  },
+  "kqmsEr": {
+    "title": "Minimum ER KQMS",
+    "tooltip": "Automatically calculates the minimum Energy Recharge (ER Floor) required to Burst every rotation using Genshin theorycraft (KQMS) rules, enforcing it as a hard minimum build constraint.",
+    "enableBtn": "Enable Minimum ER KQMS",
+    "modalTitle": "KQMS Minimum ER Settings & Team Analysis",
+    "rotationDuration": "Rotation Duration (s):",
+    "enemyScenario": "Enemy Particles:",
+    "scenarioBoss": "Boss / Single-Target (Conservative: 1 White Orb)",
+    "scenarioAoe": "Multi-Target / AoE (2 White Orbs + 3 Particles)",
+    "resultsTitle": "KQMS Team Minimum ER Analysis",
+    "rotBadge": "Rotation: {{seconds}}s",
+    "skillsBadge": "{{count}} Skills",
+    "favBadge": "{{count}} Favonius Procs",
+    "bossShort": "Single-Target (1 White Orb)",
+    "aoeShort": "AoE (Multi-Target)",
+    "colChar": "Character",
+    "colBurstCost": "Burst Cost",
+    "colFlatEnergy": "Flat Energy",
+    "colBaseEnergy": "Base Energy / Rot.",
+    "colMinEr": "Min ER (+10% margin)",
+    "activeTargetBadge": "Target",
+    "recTitle": "Optimization Recommendations (ER > 200% detected):",
+    "recFavonius": "Consider equipping a Favonius weapon on a team support (+6.0 / +3.6 neutral Base Energy per proc) to significantly lower ER floors.",
+    "recBattery": "No same-element ({{ele}}) ally in the party: adding a same-element battery triples particle energy (3.0/1.8 vs 1.0/0.6).",
+    "recFunnel": "Adjust rotation order to funnel particles (cast ally Skill and immediately swap) into "
   }
 }

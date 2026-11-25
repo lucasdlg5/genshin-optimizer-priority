@@ -47,6 +47,9 @@ function makeOptConfig(overrides: Partial<OptConfig> = {}): OptConfig {
     useEquippedWeapon: false,
     useTeammateWeapon: false,
     weaponExclusion: [],
+    kqmsErEnabled: false,
+    kqmsRotationDuration: 20,
+    kqmsEnemyScenario: 'boss',
     ...overrides,
   }
 }
