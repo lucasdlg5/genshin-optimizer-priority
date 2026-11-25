@@ -12,11 +12,22 @@ import { DataEntry } from '../DataEntry'
 export const teamSortKeys = ['name', 'lastEdit'] as const
 export type TeamSortKey = (typeof teamSortKeys)[number]
 
+const bulkQueueItemSchema = z.object({
+  id: zodString(),
+  teamId: zodString(),
+  teamCharId: zodString(),
+  enabled: zodBoolean(true),
+  optWeapon: zodBoolean(false),
+  autoEquip: zodBoolean(true),
+})
+export type BulkQueueItem = z.infer<typeof bulkQueueItemSchema>
+
 const displayTeamSchema = z.object({
   ascending: zodBoolean(),
   sortType: zodEnumWithDefault(teamSortKeys, teamSortKeys[0]),
   charKeys: zodFilteredArray(allCharacterKeys, []),
   searchTerm: zodString(),
+  bulkQueue: z.array(bulkQueueItemSchema).catch([]),
 })
 export type IDisplayTeamEntry = z.infer<typeof displayTeamSchema>
 

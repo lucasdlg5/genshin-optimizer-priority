@@ -11,7 +11,8 @@
     "teams": "Equipes",
     "archive": "Arquivo",
     "loadouts": "Loadouts",
-    "builds": "Builds"
+    "builds": "Builds",
+    "bulkBuild": "Bulk Build"
   },
   "social": {
     "paypal": "PayPal",

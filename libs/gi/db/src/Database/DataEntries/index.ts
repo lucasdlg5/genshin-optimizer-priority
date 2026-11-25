@@ -7,7 +7,8 @@ import {
   type CharacterSortKey,
   characterSortKeys,
 } from './DisplayCharacterEntry'
-import { type TeamSortKey, teamSortKeys } from './DisplayTeamEntry'
+import type { BulkQueueItem, TeamSortKey } from './DisplayTeamEntry'
+import { teamSortKeys } from './DisplayTeamEntry'
 import type { TimeZoneKey } from './DisplayTool'
 import { RESIN_MAX, timeZones } from './DisplayTool'
 import type { WeaponSortKey } from './DisplayWeaponEntry'
@@ -16,6 +17,7 @@ export type {
   ArchiveArtifactOption,
   ArchiveCharacterOption,
   ArchiveWeaponOption,
+  BulkQueueItem,
   CharacterSortKey,
   TeamSortKey,
   TimeZoneKey,

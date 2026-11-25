@@ -49,6 +49,7 @@ import { setKeysByRarities } from '@genshin-optimizer/gi/util'
 import { constant } from '@genshin-optimizer/gi/wr'
 import { allNonstackBuffs } from '@genshin-optimizer/gi/wr-types'
 import { CheckBox, CheckBoxOutlineBlank, Replay } from '@mui/icons-material'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import BlockIcon from '@mui/icons-material/Block'
 import CloseIcon from '@mui/icons-material/Close'
 import SettingsIcon from '@mui/icons-material/Settings'
@@ -67,6 +68,7 @@ import {
 } from '@mui/material'
 import { Suspense, useCallback, useContext, useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
+import { buildMaxArtifactConditionals } from './maxArtifactCondsUtil'
 
 export default function ArtifactSetConfig({
   disabled,
@@ -161,6 +163,28 @@ export default function ArtifactSetConfig({
       teamChar.conditional = tconditional
     })
   }, [database, teamCharId, conditional])
+
+  const enableAllMaxArtConds = useCallback(() => {
+    const nextConditional = buildMaxArtifactConditionals(
+      conditional,
+      charKey,
+      fakeDataContextObj.data
+    )
+    database.teamChars.set(teamCharId, (teamChar) => {
+      teamChar.conditional = nextConditional
+    })
+    database.optConfigs.set(optConfigId, {
+      artSetExclusion: {},
+    })
+  }, [
+    conditional,
+    charKey,
+    fakeDataContextObj.data,
+    database,
+    teamCharId,
+    optConfigId,
+  ])
+
   const setAllExclusion = useCallback(
     (setnum: 2 | 4, exclude = true) => {
       const artSetExclusion_ = deepClone(artSetExclusion)
@@ -257,7 +281,10 @@ export default function ArtifactSetConfig({
                 <Box
                   sx={{
                     display: 'flex',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
                     gap: 1,
+                    mb: 0.5,
                   }}
                 >
                   <Typography>
@@ -268,6 +295,17 @@ export default function ArtifactSetConfig({
                       {artifactCondCount} {t('artSetConfig.selected')}
                     </SqBadge>
                   </Typography>
+                  <Button
+                    size="small"
+                    onClick={enableAllMaxArtConds}
+                    color="success"
+                    startIcon={<AutoAwesomeIcon />}
+                  >
+                    {t(
+                      'artSetConfig.modal.setCond.maxAll',
+                      'Enable All Sets & Max Effects'
+                    )}
+                  </Button>
                   <Button
                     size="small"
                     onClick={resetArtConds}

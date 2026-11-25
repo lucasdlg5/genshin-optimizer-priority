@@ -124,6 +124,7 @@
     "modal": {
       "setCond": {
         "title": "Artifact Set Conditional Effects",
+        "maxAll": "Enable All Sets & Max Effects",
         "reset": "Reset Conditionals",
         "text": "Some artifact set effects provide conditional stats. This window allows you to select those effects, so they can contribute stats when a build that satifies a set effect is calculated during optimization."
       },
@@ -223,5 +224,26 @@
     "recFavonius": "Consider equipping a Favonius weapon on a team support (+6.0 / +3.6 neutral Base Energy per proc) to significantly lower ER floors.",
     "recBattery": "No same-element ({{ele}}) ally in the party: adding a same-element battery triples particle energy (3.0/1.8 vs 1.0/0.6).",
     "recFunnel": "Adjust rotation order to funnel particles (cast ally Skill and immediately swap) into "
+  },
+  "bulkBuild": {
+    "title": "Priority Bulk Build",
+    "desc": "Optimizes characters sequentially (#1, #2, #3...). Artifacts and weapons assigned to #1 are locked from #2 onwards — so #5 can never use equipment assigned to #1 through #4.",
+    "priorityRuleAlert": "Strict Priority Rule: the queue runs from #1 onwards. Each character locks their winning weapon and 5 artifacts from all lower-priority characters below them. Select each character's Optimization Target and Artifact Sets/Effects before running.",
+    "addCharBtn": "Add Character",
+    "importTeamsBtn": "Import from Teams",
+    "maxAllSetsBtn": "Enable All Artifact Sets & Max Effects (Entire Queue)",
+    "clearQueueBtn": "Clear Queue",
+    "runBtn": "Generate Bulk Builds",
+    "runningStatus": "Optimizing Priority #{{current}} of {{total}}",
+    "emptyTitle": "No characters in the priority queue.",
+    "emptySubtitle": "Click \"Add Character\" or \"Import from Teams\" above to build your priority order (#1 onwards).",
+    "missingTargetBadge": "Select a Target",
+    "maxSetsSingleBtn": "Enable All Sets & Max Effects",
+    "autoEquipBtn": "Auto-Equip",
+    "resultReady": "Build Found",
+    "resultScore": "Target Score:",
+    "reasonNoTarget": "No Optimization Target selected.",
+    "reasonNoWeapon": "No weapon available (all eligible weapons claimed by higher priorities).",
+    "reasonNoValidBuild": "No valid artifact combination satisfied the constraints with remaining unclaimed artifacts."
   }
 }

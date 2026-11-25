@@ -8,6 +8,7 @@ import { SillyContext } from '@genshin-optimizer/gi/ui'
 import ArticleIcon from '@mui/icons-material/Article'
 import BookIcon from '@mui/icons-material/Book'
 import ConstructionIcon from '@mui/icons-material/Construction'
+import FormatListNumberedIcon from '@mui/icons-material/FormatListNumbered'
 import GroupsIcon from '@mui/icons-material/Groups'
 import MenuIcon from '@mui/icons-material/Menu'
 import PeopleIcon from '@mui/icons-material/People'
@@ -78,6 +79,12 @@ const teams: ITab = {
   value: 'teams',
   textSuffix: <TeamChip key="charAdd" />,
 }
+const bulkBuild: ITab = {
+  i18Key: 'tabs.bulkBuild',
+  icon: <FormatListNumberedIcon />,
+  to: '/bulk-build',
+  value: 'bulk-build',
+}
 const tools: ITab = {
   i18Key: 'tabs.tools',
   icon: <ConstructionIcon />,
@@ -139,6 +146,7 @@ const maincontent = [
   weapons,
   characters,
   teams,
+  bulkBuild,
   archive,
   tools,
   scanner,

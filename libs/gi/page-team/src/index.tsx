@@ -48,8 +48,11 @@ import {
 import type { BuildTcContexObj, SetBuildTcAction } from './BuildTcContext'
 import { BuildTcContext } from './BuildTcContext'
 import Content from './CharacterDisplay/Content'
+import { PageBulkBuild } from './PageBulkBuild'
 import TeamCharacterSelector from './TeamCharacterSelector'
 import TeamSetting from './TeamSetting'
+
+export { PageBulkBuild }
 
 export default function PageTeam() {
   const database = useDatabase()

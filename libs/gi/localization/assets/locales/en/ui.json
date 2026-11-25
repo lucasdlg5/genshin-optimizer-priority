@@ -13,7 +13,8 @@
     "scanner": "Scanners",
     "archive": "Archive",
     "loadouts": "Loadouts",
-    "builds": "Builds"
+    "builds": "Builds",
+    "bulkBuild": "Bulk Build"
   },
   "social": {
     "paypal": "PayPal",

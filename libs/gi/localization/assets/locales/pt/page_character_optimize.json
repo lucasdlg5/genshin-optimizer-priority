@@ -45,6 +45,7 @@
     "modal": {
       "setCond": {
         "title": "Efeitos Condicionais dos Conjuntos de Artefato",
+        "maxAll": "Ativar Todos os Conjuntos e Efeitos no Máximo",
         "reset": "Resetar Condicionais",
         "text": "Alguns Conjuntos de Artefato possuem efeitos condicionais. Essa janela te permite selecionar esses efeitos, para que eles possam ser levados em conta  ao Otimizar uma build que satisfaz a condição."
       },
@@ -171,5 +172,26 @@
     "recFavonius": "Considere equipar uma Arma de Favonius em um suporte da equipe (+6.0 / +3.6 de Energia Base neutra por proc) para reduzir drasticamente o piso de ER.",
     "recBattery": "Nenhum aliado do mesmo elemento ({{ele}}) na equipe: incluir uma bateria do mesmo elemento triplica a energia por partícula (3.0/1.8 vs 1.0/0.6).",
     "recFunnel": "Ajuste a rotação para funilar partículas (usar a Habilidade Elemental do aliado e trocar imediatamente) para "
+  },
+  "bulkBuild": {
+    "title": "Bulk Build por Ordem de Prioridade",
+    "desc": "Otimiza seus personagens em sequência (#1, #2, #3...). Os artefatos e a arma escolhidos para #1 ficam bloqueados para #2 em diante — assim o personagem #5 nunca usa equipamentos dos personagens #1 a #4.",
+    "priorityRuleAlert": "Regra de Prioridade Estrita: a fila é calculada do #1 em diante. Cada personagem bloqueia sua arma e seus 5 artefatos vencedores para todos os personagens abaixo dele. Selecione o Objetivo e os Conjuntos/Efeitos de cada personagem antes de iniciar.",
+    "addCharBtn": "Adicionar Personagem",
+    "importTeamsBtn": "Importar das Equipes",
+    "maxAllSetsBtn": "Ativar Todos os Artefatos e Efeitos no Máximo (Fila Toda)",
+    "clearQueueBtn": "Limpar Fila",
+    "runBtn": "Gerar Bulk Builds",
+    "runningStatus": "Otimizando Prioridade #{{current}} de {{total}}",
+    "emptyTitle": "Nenhum personagem na fila de prioridade.",
+    "emptySubtitle": "Clique em \"Adicionar Personagem\" ou \"Importar das Equipes\" acima para montar sua ordem de prioridade (#1 em diante).",
+    "missingTargetBadge": "Selecione um Objetivo",
+    "maxSetsSingleBtn": "Ativar Todos Sets & Efeitos Máx.",
+    "autoEquipBtn": "Auto-Equipar",
+    "resultReady": "Build Encontrada",
+    "resultScore": "Resultado do Objetivo:",
+    "reasonNoTarget": "Nenhum Objetivo de Otimização selecionado.",
+    "reasonNoWeapon": "Nenhuma arma disponível (todas bloqueadas por prioridades superiores).",
+    "reasonNoValidBuild": "Nenhuma combinação atendeu às restrições com os artefatos restantes."
   }
 }
