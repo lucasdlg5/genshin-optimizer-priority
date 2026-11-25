@@ -33,7 +33,14 @@ import {
   useTeamData,
   WeaponName,
 } from '@genshin-optimizer/gi/ui'
-import { CheckBox, CheckBoxOutlineBlank, Replay } from '@mui/icons-material'
+import { UIData } from '@genshin-optimizer/gi/uidata'
+import { constant } from '@genshin-optimizer/gi/wr'
+import {
+  AutoAwesome,
+  CheckBox,
+  CheckBoxOutlineBlank,
+  Replay,
+} from '@mui/icons-material'
 import BlockIcon from '@mui/icons-material/Block'
 import CloseIcon from '@mui/icons-material/Close'
 import SettingsIcon from '@mui/icons-material/Settings'
@@ -62,6 +69,10 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { deduplicateAndSortWeapons } from '../weaponFilterUtil'
+import {
+  buildMaxWeaponConditionals,
+  getUniqueBestWeaponsAndExclusion,
+} from './maxWeaponCondsUtil'
 
 const WEAPON_MIN = 1
 const WEAPON_MAX = 90
@@ -71,19 +82,23 @@ export const WeaponFilter = memo(function WeaponFilter({
   teammateWeaponIds,
   currentWeaponId,
   disabled = false,
+  showQuickMaxButton = false,
 }: {
   filteredWeapons: ICachedWeapon[]
   teammateWeaponIds: string[]
   currentWeaponId?: string
   disabled?: boolean
+  showQuickMaxButton?: boolean
 }) {
   const { t } = useTranslation('page_character_optimize')
   const database = useDatabase()
   const {
+    teamCharId,
     teamChar: { key: characterKey, conditional, optConfigId },
   } = useContext(TeamCharacterContext)
+  const { data } = useContext(DataContext)
   const optConfig = useOptConfig(optConfigId)!
-  const { optWeapon } = optConfig
+  const { optWeapon, weaponExclusion } = optConfig
   const [show, onOpen, onClose] = useBoolState(false)
 
   const charWeaponType = getCharStat(characterKey).weaponType
@@ -105,6 +120,47 @@ export const WeaponFilter = memo(function WeaponFilter({
       ).length,
     [conditional, weaponKeysOfType]
   )
+
+  const handleEnableMaxUniqueWeapons = useCallback(() => {
+    const allWeapons = database.weapons.values
+    const { weaponExclusion: nextExclusion, keptWeaponKeys } =
+      getUniqueBestWeaponsAndExclusion({
+        allWeapons,
+        characterKey,
+        currentWeaponId,
+        existingWeaponExclusion: weaponExclusion,
+      })
+    const fakeData = new UIData(
+      data?.data[0] ?? { charKey: constant(characterKey) },
+      undefined
+    )
+    const nextConditional = buildMaxWeaponConditionals(
+      conditional,
+      characterKey,
+      fakeData,
+      keptWeaponKeys
+    )
+    database.teamChars.set(teamCharId, (tc) => {
+      tc.conditional = nextConditional
+    })
+    database.optConfigs.set(optConfigId, {
+      optWeapon: true,
+      useEquippedWeapon: true,
+      useTeammateWeapon: true,
+      weaponLevelLow: WEAPON_MIN,
+      weaponLevelHigh: WEAPON_MAX,
+      weaponExclusion: nextExclusion,
+    })
+  }, [
+    database,
+    characterKey,
+    currentWeaponId,
+    weaponExclusion,
+    data,
+    conditional,
+    teamCharId,
+    optConfigId,
+  ])
 
   return (
     <>
@@ -141,6 +197,21 @@ export const WeaponFilter = memo(function WeaponFilter({
             >
               {t('weaponFilter.optimizeWeapon', 'Optimize Weapon')}
             </Button>
+            {showQuickMaxButton && (
+              <Button
+                fullWidth
+                size="small"
+                disabled={disabled}
+                startIcon={<AutoAwesome />}
+                color="success"
+                onClick={handleEnableMaxUniqueWeapons}
+              >
+                {t(
+                  'weaponFilter.maxAllUnique',
+                  'Ativar Todas (Sem Repetir) & Efeitos no Máximo'
+                )}
+              </Button>
+            )}
             {optWeapon && (
               <Typography variant="body2">
                 {t('weaponFilter.condLabel', 'Weapon Conditionals')}{' '}
@@ -172,6 +243,7 @@ export const WeaponFilter = memo(function WeaponFilter({
               currentWeaponId={currentWeaponId}
               weaponKeysOfType={weaponKeysOfType}
               weaponCondCount={weaponCondCount}
+              onEnableMaxUniqueWeapons={handleEnableMaxUniqueWeapons}
             />
           )}
         </>
@@ -188,6 +260,7 @@ function WeaponFilterModalContent({
   currentWeaponId,
   weaponKeysOfType,
   weaponCondCount,
+  onEnableMaxUniqueWeapons,
 }: {
   onClose: () => void
   disabled: boolean
@@ -196,6 +269,7 @@ function WeaponFilterModalContent({
   currentWeaponId?: string
   weaponKeysOfType: Set<string>
   weaponCondCount: number
+  onEnableMaxUniqueWeapons: () => void
 }) {
   const { t } = useTranslation('page_character_optimize')
   const database = useDatabase()
@@ -394,10 +468,29 @@ function WeaponFilterModalContent({
                   <SqBadge color={filteredWeapons.length ? 'info' : 'error'}>
                     {filteredWeapons.length} / {candidatePoolWeapons.length}
                   </SqBadge>
-                  <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
+                  <Box
+                    sx={{
+                      ml: 'auto',
+                      display: 'flex',
+                      gap: 1,
+                      flexWrap: 'wrap',
+                    }}
+                  >
                     <Button
                       size="small"
                       color="success"
+                      startIcon={<AutoAwesome />}
+                      disabled={disabled || !allWeapons.length}
+                      onClick={onEnableMaxUniqueWeapons}
+                    >
+                      {t(
+                        'weaponFilter.maxAllUnique',
+                        'Ativar Todas (Sem Repetir) & Efeitos no Máximo'
+                      )}
+                    </Button>
+                    <Button
+                      size="small"
+                      color="info"
                       disabled={disabled || !candidatePoolWeapons.length}
                       onClick={includeAllWeapons}
                     >

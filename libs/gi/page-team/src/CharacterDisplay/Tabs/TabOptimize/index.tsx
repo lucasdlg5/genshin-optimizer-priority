@@ -819,6 +819,7 @@ export default function TabBuild() {
             teammateWeaponIds={teammateWeaponIds}
             currentWeaponId={currentWeaponId}
             disabled={generatingBuilds}
+            showQuickMaxButton
           />
           <BonusStatsCard />
           <CustomMultiTargetButton />

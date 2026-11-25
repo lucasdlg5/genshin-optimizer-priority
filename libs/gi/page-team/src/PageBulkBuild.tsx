@@ -104,6 +104,10 @@ import { useTranslation } from 'react-i18next'
 import ArtifactSetConfig from './CharacterDisplay/Tabs/TabOptimize/Components/ArtifactSetConfig'
 import { KqmsErCard } from './CharacterDisplay/Tabs/TabOptimize/Components/KqmsErCard'
 import { buildMaxArtifactConditionals } from './CharacterDisplay/Tabs/TabOptimize/Components/maxArtifactCondsUtil'
+import {
+  buildMaxWeaponConditionals,
+  getUniqueBestWeaponsAndExclusion,
+} from './CharacterDisplay/Tabs/TabOptimize/Components/maxWeaponCondsUtil'
 import OptimizationTargetSelector from './CharacterDisplay/Tabs/TabOptimize/Components/OptimizationTargetSelector'
 import StatFilterCard from './CharacterDisplay/Tabs/TabOptimize/Components/StatFilterCard'
 import { WeaponFilter } from './CharacterDisplay/Tabs/TabOptimize/Components/WeaponFilter'
@@ -307,6 +311,54 @@ export function PageBulkBuild() {
     }
   }, [database, queue])
 
+  const handleEnableMaxWeaponsQueue = useCallback(() => {
+    const allWeaponsList = database.weapons.values
+    for (const item of queue) {
+      const team = database.teams.get(item.teamId)
+      const tc = database.teamChars.get(item.teamCharId)
+      if (!tc) continue
+      const existingOptConfig = database.optConfigs.get(tc.optConfigId)
+      const ld =
+        team?.loadoutData.find((l) => l?.teamCharId === item.teamCharId) ??
+        ({
+          teamCharId: item.teamCharId,
+          buildType: 'equipped',
+        } as LoadoutDatum)
+      const curWeaponId = database.teams.getLoadoutWeapon(ld)?.id
+
+      const { weaponExclusion: nextExclusion, keptWeaponKeys } =
+        getUniqueBestWeaponsAndExclusion({
+          allWeapons: allWeaponsList,
+          characterKey: tc.key,
+          currentWeaponId: curWeaponId,
+          existingWeaponExclusion: existingOptConfig?.weaponExclusion,
+        })
+
+      const fakeData = new UIData({ charKey: constant(tc.key) }, undefined)
+      const nextConditional = buildMaxWeaponConditionals(
+        tc.conditional,
+        tc.key,
+        fakeData,
+        keptWeaponKeys
+      )
+
+      database.teamChars.set(item.teamCharId, (teamChar) => {
+        teamChar.conditional = nextConditional
+      })
+      database.optConfigs.set(tc.optConfigId, {
+        optWeapon: true,
+        useEquippedWeapon: true,
+        useTeammateWeapon: true,
+        weaponLevelLow: 1,
+        weaponLevelHigh: 90,
+        weaponExclusion: nextExclusion,
+      })
+    }
+    if (queue.length) {
+      setQueue(queue.map((item) => ({ ...item, optWeapon: true })))
+    }
+  }, [database, queue, setQueue])
+
   const moveItem = useCallback(
     (index: number, delta: -1 | 1) => {
       const targetIndex = index + delta
@@ -436,7 +488,7 @@ export function PageBulkBuild() {
           } as LoadoutDatum)
 
         const currentWeapon = database.teams.getLoadoutWeapon(loadoutDatum)
-        const optWeaponFlag = item.optWeapon || optConfig.optWeapon
+        const optWeaponFlag = optConfig.optWeapon
 
         // Filter candidate weapons: NEVER allow weapons claimed by higher-priority (#1..#i) characters!
         let candidateWeapons: ICachedWeapon[]
@@ -906,6 +958,17 @@ export function PageBulkBuild() {
                 )}
               </Button>
               <Button
+                color="success"
+                startIcon={<AutoAwesome />}
+                disabled={progress.running || !queue.length}
+                onClick={handleEnableMaxWeaponsQueue}
+              >
+                {t(
+                  'bulkBuild.maxAllWeaponsBtn',
+                  'Ativar Todas as Armas e Efeitos no Máximo - Sem Repetir (Fila Toda)'
+                )}
+              </Button>
+              <Button
                 color="error"
                 startIcon={<DeleteForever />}
                 disabled={progress.running || !queue.length}
@@ -1236,6 +1299,47 @@ function BulkQueueRowInner({
     optConfigId,
   ])
 
+  const handleMaxWeaponsSingle = useCallback(() => {
+    const curWeaponId = database.teams.getLoadoutWeapon(loadoutDatum)?.id
+    const { weaponExclusion: nextExclusion, keptWeaponKeys } =
+      getUniqueBestWeaponsAndExclusion({
+        allWeapons: database.weapons.values,
+        characterKey,
+        currentWeaponId: curWeaponId,
+        existingWeaponExclusion: optConfig.weaponExclusion,
+      })
+    const baseData = charUIData?.data[0] ?? { charKey: constant(characterKey) }
+    const fakeData = new UIData(baseData, undefined)
+    const nextCond = buildMaxWeaponConditionals(
+      teamChar.conditional,
+      characterKey,
+      fakeData,
+      keptWeaponKeys
+    )
+    database.teamChars.set(teamCharId, (tc) => {
+      tc.conditional = nextCond
+    })
+    database.optConfigs.set(optConfigId, {
+      optWeapon: true,
+      useEquippedWeapon: true,
+      useTeammateWeapon: true,
+      weaponLevelLow: 1,
+      weaponLevelHigh: 90,
+      weaponExclusion: nextExclusion,
+    })
+    onUpdate({ optWeapon: true })
+  }, [
+    database,
+    loadoutDatum,
+    characterKey,
+    optConfig.weaponExclusion,
+    charUIData,
+    teamChar.conditional,
+    teamCharId,
+    optConfigId,
+    onUpdate,
+  ])
+
   const hasTarget = Boolean(optConfig.optimizationTarget?.length)
 
   if (!characterContextValue || !dataContextValue) {
@@ -1365,6 +1469,19 @@ function BulkQueueRowInner({
                         {t(
                           'bulkBuild.maxSetsSingleBtn',
                           'Ativar Todos Sets & Efeitos Máx.'
+                        )}
+                      </Button>
+
+                      <Button
+                        size="small"
+                        color="success"
+                        startIcon={<AutoAwesome />}
+                        disabled={disabled}
+                        onClick={handleMaxWeaponsSingle}
+                      >
+                        {t(
+                          'bulkBuild.maxWeaponsSingleBtn',
+                          'Ativar Todas Armas & Efeitos Máx. (Sem Repetir)'
                         )}
                       </Button>
 
