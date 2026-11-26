@@ -137,9 +137,12 @@ export type BulkBuildResultItem = {
 
 type BulkProgressState = {
   running: boolean
+  currentQueueId?: string
   currentIndex: number
   totalCount: number
   currentCharKey?: CharacterKey
+  weaponIndex: number
+  weaponTotal: number
   tested: number
   skipped: number
   total: number
@@ -184,6 +187,8 @@ export function PageBulkBuild() {
     running: false,
     currentIndex: 0,
     totalCount: 0,
+    weaponIndex: 0,
+    weaponTotal: 0,
     tested: 0,
     skipped: 0,
     total: 0,
@@ -405,8 +410,11 @@ export function PageBulkBuild() {
     setResults([])
     setProgress({
       running: true,
+      currentQueueId: undefined,
       currentIndex: 0,
       totalCount: activeQueue.length,
+      weaponIndex: 0,
+      weaponTotal: 0,
       tested: 0,
       skipped: 0,
       total: 0,
@@ -448,8 +456,11 @@ export function PageBulkBuild() {
         const enabledIdx = activeQueue.findIndex((q) => q.id === item.id)
         setProgress((prev) => ({
           ...prev,
+          currentQueueId: item.id,
           currentIndex: enabledIdx + 1,
           currentCharKey: characterKey,
+          weaponIndex: 0,
+          weaponTotal: 0,
           tested: 0,
           skipped: 0,
           total: 0,
@@ -599,8 +610,18 @@ export function PageBulkBuild() {
         let targetInfoUnit: ValueUnit = ''
         let targetInfoFixed: number | undefined
 
-        for (const weapon of candidateWeapons) {
+        for (let wIdx = 0; wIdx < candidateWeapons.length; wIdx++) {
           if (isCancelled) throw cancellationError
+          const weapon = candidateWeapons[wIdx]
+
+          setProgress((prev) => ({
+            ...prev,
+            weaponIndex: wIdx + 1,
+            weaponTotal: candidateWeapons.length,
+            tested: 0,
+            skipped: 0,
+            total: 0,
+          }))
 
           const teamData = getTeamData(
             database,
@@ -1036,16 +1057,28 @@ export function PageBulkBuild() {
                         </>
                       )}
                     </Typography>
-                    {Number.isFinite(progress.total) && progress.total > 0 && (
-                      <Typography variant="caption" color="text.secondary">
-                        {(
-                          ((progress.tested + progress.skipped) /
-                            progress.total) *
-                          100
-                        ).toFixed(1)}
-                        %
-                      </Typography>
-                    )}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {progress.weaponTotal > 0 && (
+                        <Typography
+                          variant="caption"
+                          sx={{ fontWeight: 'bold' }}
+                          color="info.main"
+                        >
+                          ({progress.weaponIndex}/{progress.weaponTotal})
+                        </Typography>
+                      )}
+                      {Number.isFinite(progress.total) &&
+                        progress.total > 0 && (
+                          <Typography variant="caption" color="text.secondary">
+                            {(
+                              ((progress.tested + progress.skipped) /
+                                progress.total) *
+                              100
+                            ).toFixed(1)}
+                            %
+                          </Typography>
+                        )}
+                    </Box>
                   </Box>
                   <LinearProgress
                     variant={
@@ -1099,6 +1132,11 @@ export function PageBulkBuild() {
               isFirst={idx === 0}
               isLast={idx === queue.length - 1}
               disabled={progress.running}
+              activeProgress={
+                progress.running && progress.currentQueueId === item.id
+                  ? progress
+                  : undefined
+              }
               result={results.find((r) => r.queueId === item.id)}
               onMoveUp={() => moveItem(idx, -1)}
               onMoveDown={() => moveItem(idx, 1)}
@@ -1118,6 +1156,7 @@ const BulkQueueRow = memo(function BulkQueueRow({
   isFirst,
   isLast,
   disabled,
+  activeProgress,
   result,
   onMoveUp,
   onMoveDown,
@@ -1129,6 +1168,7 @@ const BulkQueueRow = memo(function BulkQueueRow({
   isFirst: boolean
   isLast: boolean
   disabled: boolean
+  activeProgress?: BulkProgressState
   result?: BulkBuildResultItem
   onMoveUp: () => void
   onMoveDown: () => void
@@ -1151,6 +1191,7 @@ const BulkQueueRow = memo(function BulkQueueRow({
         isFirst={isFirst}
         isLast={isLast}
         disabled={disabled}
+        activeProgress={activeProgress}
         result={result}
         teamId={item.teamId}
         teamCharId={item.teamCharId}
@@ -1172,6 +1213,7 @@ function BulkQueueRowInner({
   isFirst,
   isLast,
   disabled,
+  activeProgress,
   result,
   teamId,
   teamCharId,
@@ -1187,6 +1229,7 @@ function BulkQueueRowInner({
   isFirst: boolean
   isLast: boolean
   disabled: boolean
+  activeProgress?: BulkProgressState
   result?: BulkBuildResultItem
   teamId: string
   teamCharId: string
@@ -1519,6 +1562,83 @@ function BulkQueueRowInner({
                     loadoutDatum={loadoutDatum}
                     disabled={disabled}
                   />
+
+                  {/* Per-Character Active Optimization Progress */}
+                  {activeProgress && (
+                    <>
+                      <Divider />
+                      <Box>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            mb: 0.5,
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary">
+                            {t(
+                              'bulkBuild.charProgressLabel',
+                              'Processando builds...'
+                            )}
+                          </Typography>
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1,
+                            }}
+                          >
+                            {activeProgress.weaponTotal > 0 && (
+                              <Typography
+                                variant="caption"
+                                sx={{ fontWeight: 'bold' }}
+                                color="info.main"
+                              >
+                                ({activeProgress.weaponIndex}/
+                                {activeProgress.weaponTotal})
+                              </Typography>
+                            )}
+                            {Number.isFinite(activeProgress.total) &&
+                              activeProgress.total > 0 && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {(
+                                    ((activeProgress.tested +
+                                      activeProgress.skipped) /
+                                      activeProgress.total) *
+                                    100
+                                  ).toFixed(1)}
+                                  %
+                                </Typography>
+                              )}
+                          </Box>
+                        </Box>
+                        <LinearProgress
+                          variant={
+                            Number.isFinite(activeProgress.total) &&
+                            activeProgress.total > 0
+                              ? 'determinate'
+                              : 'indeterminate'
+                          }
+                          value={
+                            Number.isFinite(activeProgress.total) &&
+                            activeProgress.total > 0
+                              ? Math.min(
+                                  100,
+                                  ((activeProgress.tested +
+                                    activeProgress.skipped) /
+                                    activeProgress.total) *
+                                    100
+                                )
+                              : 0
+                          }
+                        />
+                      </Box>
+                    </>
+                  )}
 
                   {/* Result Preview for this Priority Slot */}
                   {result && (

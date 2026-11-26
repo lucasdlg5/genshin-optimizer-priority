@@ -185,6 +185,7 @@
     "clearQueueBtn": "Limpar Fila",
     "runBtn": "Gerar Bulk Builds",
     "runningStatus": "Otimizando Prioridade #{{current}} de {{total}}",
+    "charProgressLabel": "Processando builds...",
     "emptyTitle": "Nenhum personagem na fila de prioridade.",
     "emptySubtitle": "Clique em \"Adicionar Personagem\" ou \"Importar das Equipes\" acima para montar sua ordem de prioridade (#1 em diante).",
     "missingTargetBadge": "Selecione um Objetivo",

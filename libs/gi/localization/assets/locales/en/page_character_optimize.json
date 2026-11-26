@@ -237,6 +237,7 @@
     "clearQueueBtn": "Clear Queue",
     "runBtn": "Generate Bulk Builds",
     "runningStatus": "Optimizing Priority #{{current}} of {{total}}",
+    "charProgressLabel": "Processing builds...",
     "emptyTitle": "No characters in the priority queue.",
     "emptySubtitle": "Click \"Add Character\" or \"Import from Teams\" above to build your priority order (#1 onwards).",
     "missingTargetBadge": "Select a Target",

@@ -172,7 +172,12 @@ export default function BuildAlert({
         >
           {hasTotal && (
             <Grid>
-              <Typography>{`${progress.toFixed(1)}%`}</Typography>
+              <Typography>
+                {generatingBuilds && weaponTotal && weaponTotal > 1
+                  ? `(${weaponIndex ?? weaponTotal}/${weaponTotal}) `
+                  : ''}
+                {`${progress.toFixed(1)}%`}
+              </Typography>
             </Grid>
           )}
           <Grid
