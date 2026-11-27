@@ -11,6 +11,25 @@ import type {
   WorkerResult,
 } from '../type.js'
 
+export function createSolverWorkers(numWorker: number): Worker[] {
+  return Array.from(
+    { length: numWorker },
+    () =>
+      new Worker(new URL('./BackgroundWorker.ts', import.meta.url), {
+        type: 'module',
+      })
+  )
+}
+
+export function terminateSolverWorkers(workers: Worker[]): void {
+  for (const w of workers) {
+    w.onmessage = null
+    w.onerror = null
+    w.terminate()
+  }
+  workers.length = 0
+}
+
 export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
   private maxIterateSize = 32_000_000
   private status: Record<
@@ -30,16 +49,10 @@ export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
   constructor(
     problem: OptProblemInput,
     status: GOSolver['status'],
-    numWorker: number
+    numWorker: number,
+    existingWorkers?: Worker[]
   ) {
-    const workers = Array(numWorker)
-      .fill(Number.NaN)
-      .map(
-        (_) =>
-          new Worker(new URL('./BackgroundWorker.ts', import.meta.url), {
-            type: 'module',
-          })
-      )
+    const workers = existingWorkers ?? createSolverWorkers(numWorker)
     super(workers, ['iterate', 'split', 'count'], (r, w) => {
       switch (r.resultType) {
         case 'interim':
@@ -79,12 +92,22 @@ export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
 
     // Cleanup function from the BPS tracker
     const stopTracking = this.trackBuildsPerSecond()
-
-    await this.execute([{ command: 'count', exclusion, maxIterateSize }])
-    stopTracking()
-    this.notifiedBroadcast({ command: 'finalize' })
-    await this.execute([])
-    return this.finalizedResults
+    try {
+      await this.execute([{ command: 'count', exclusion, maxIterateSize }])
+      this.notifiedBroadcast({ command: 'finalize' })
+      await this.execute([])
+      const results = this.finalizedResults
+      this.finalizedResults = []
+      this.buildValues = []
+      return results
+    } finally {
+      stopTracking()
+      for (const w of this._workers) {
+        w.onmessage = null
+        w.onerror = null
+      }
+      this.workDone.clear()
+    }
   }
 
   preprocess({

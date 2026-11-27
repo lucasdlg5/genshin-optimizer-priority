@@ -262,6 +262,13 @@
     "resultScore": "Target Score:",
     "reasonNoTarget": "No Optimization Target selected.",
     "reasonNoWeapon": "No weapon available (all eligible weapons claimed by higher priorities).",
-    "reasonNoValidBuild": "No valid artifact combination satisfied the constraints with remaining unclaimed artifacts."
+    "reasonNoValidBuild": "No valid artifact combination satisfied the constraints with remaining unclaimed artifacts.",
+    "showingRange": "Showing #{{start}}–#{{end}} of {{total}} characters",
+    "perPage": "page",
+    "statusDisabled": "Disabled",
+    "statusRunning": "Optimizing now...",
+    "statusDone": "Completed",
+    "statusSkipped": "No Build",
+    "statusQueued": "Queued"
   }
 }

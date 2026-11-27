@@ -46,7 +46,13 @@ import {
   useWeapon,
 } from '@genshin-optimizer/gi/db-ui'
 import type { OptProblemInput, SolverBuild } from '@genshin-optimizer/gi/solver'
-import { GOSolver, mergeBuilds, mergePlot } from '@genshin-optimizer/gi/solver'
+import {
+  createSolverWorkers,
+  GOSolver,
+  mergeBuilds,
+  mergePlot,
+  terminateSolverWorkers,
+} from '@genshin-optimizer/gi/solver'
 import { compactArtifacts } from '@genshin-optimizer/gi/solver-tc'
 import {
   ArtifactLevelSlider,
@@ -400,9 +406,11 @@ export default function TabBuild() {
     const cancellationError = new Error()
     let isCancelled = false
     let activeSolver: GOSolver | undefined
+    let sharedWorkers: Worker[] = []
     cancelled.then(() => {
       isCancelled = true
       activeSolver?.cancel(cancellationError)
+      terminateSolverWorkers(sharedWorkers)
     })
 
     const status: Omit<BuildStatus, 'type'> = {
@@ -443,11 +451,12 @@ export default function TabBuild() {
     const statusUpdateTimer = setInterval(() => {
       syncStatus()
       setBuildStatus({ type: 'active', ...status })
-    }, 100)
+    }, 200)
 
     const teamObj = database.teams.get(teamId)
 
     try {
+      sharedWorkers = createSolverWorkers(maxWorkers)
       const allWeaponBuilds: Array<SolverBuild & { weaponId: string }> = []
       const bestBuildPerWeapon: Array<SolverBuild & { weaponId: string }> = []
       const mergedPlotByX = new Map<
@@ -485,7 +494,7 @@ export default function TabBuild() {
         ) as NumNode | undefined
         if (!unoptimizedOptimizationTargetNode) continue
         const targetNode = unoptimizedOptimizationTargetNode
-        if (!targetNodeForPlot) targetNodeForPlot = targetNode
+        if (plotBase && !targetNodeForPlot) targetNodeForPlot = targetNode
 
         let effectiveStatFilters = statFilters
         if (kqmsErEnabled && teamObj) {
@@ -585,7 +594,12 @@ export default function TabBuild() {
           skippedPerSecond: 0,
         }
 
-        const solver = new GOSolver(problem, activeWeaponStatus, maxWorkers)
+        const solver = new GOSolver(
+          problem,
+          activeWeaponStatus,
+          maxWorkers,
+          sharedWorkers
+        )
         activeSolver = solver
         if (isCancelled) {
           solver.cancel(cancellationError)
@@ -593,7 +607,6 @@ export default function TabBuild() {
         }
 
         const results = await solver.solve()
-        solver.cancel() // Done using `solver`
         activeSolver = undefined
         hasAnyResults = true
 
@@ -641,6 +654,8 @@ export default function TabBuild() {
         allWeaponBuilds.sort((a, b) => b.value - a.value)
         if (allWeaponBuilds.length > maxBuildsToShow)
           allWeaponBuilds.length = maxBuildsToShow
+
+        await new Promise((resolve) => setTimeout(resolve, 0))
       }
 
       bestBuildPerWeapon.sort((a, b) => b.value - a.value)
@@ -718,6 +733,7 @@ export default function TabBuild() {
       status.skipped = 0
       status.total = 0
     } finally {
+      terminateSolverWorkers(sharedWorkers)
       clearInterval(statusUpdateTimer)
       setBuildStatus({
         type: 'inactive',

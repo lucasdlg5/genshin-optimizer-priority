@@ -210,6 +210,13 @@
     "resultScore": "Resultado do Objetivo:",
     "reasonNoTarget": "Nenhum Objetivo de Otimização selecionado.",
     "reasonNoWeapon": "Nenhuma arma disponível (todas bloqueadas por prioridades superiores).",
-    "reasonNoValidBuild": "Nenhuma combinação atendeu às restrições com os artefatos restantes."
+    "reasonNoValidBuild": "Nenhuma combinação atendeu às restrições com os artefatos restantes.",
+    "showingRange": "Exibindo #{{start}}–#{{end}} de {{total}} personagens",
+    "perPage": "página",
+    "statusDisabled": "Desativado",
+    "statusRunning": "Otimizando agora...",
+    "statusDone": "Concluído",
+    "statusSkipped": "Sem Build",
+    "statusQueued": "Aguardando na fila"
   }
 }

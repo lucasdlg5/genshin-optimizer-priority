@@ -46,6 +46,9 @@ async function handleEvent(e: MessageEvent<WorkerCommand>): Promise<void> {
       computeWorker.refresh(true)
       const { builds, plotData } = computeWorker
       postMessage({ resultType: 'finalize', builds, plotData })
+      // Immediately drop problem references inside worker so GC can reclaim memory between passes
+      ;(splitWorker as unknown) = undefined
+      ;(computeWorker as unknown) = undefined
       break
     }
     case 'count': {
@@ -69,6 +72,8 @@ async function handleEvent(e: MessageEvent<WorkerCommand>): Promise<void> {
       break
     }
     case 'setup':
+      ;(splitWorker as unknown) = undefined
+      ;(computeWorker as unknown) = undefined
       try {
         splitWorker = new BNBSplitWorker(data, (x) => postMessage(x))
       } catch {
