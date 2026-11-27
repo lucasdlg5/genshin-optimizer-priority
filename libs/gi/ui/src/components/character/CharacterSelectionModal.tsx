@@ -35,6 +35,9 @@ import {
   useDBMeta,
 } from '@genshin-optimizer/gi/db-ui'
 import { getCharEle, getCharStat } from '@genshin-optimizer/gi/stats'
+import CheckIcon from '@mui/icons-material/Check'
+import CheckBoxIcon from '@mui/icons-material/CheckBox'
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank'
 import CloseIcon from '@mui/icons-material/Close'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
@@ -42,6 +45,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import type { TooltipProps } from '@mui/material'
 import {
   Box,
+  Button,
   CardActionArea,
   CardContent,
   Divider,
@@ -79,6 +83,7 @@ import {
   characterSortConfigs,
   characterSortMap,
 } from './CharacterSort'
+import { CharIconSide } from './CharIconSideElement'
 import { useCharacterNameSearchFieldsCache } from './characterNameSearchFields'
 import { CharacterName } from './Trans'
 
@@ -89,6 +94,8 @@ export function CharacterSingleSelectionModal({
   selectedIndex = -1,
   loadoutData = [undefined, undefined, undefined, undefined],
   newFirst = false,
+  hideSelectedByDefault = false,
+  showSelectedAtTopLabel,
 }: {
   show: boolean
   onHide: () => void
@@ -96,10 +103,19 @@ export function CharacterSingleSelectionModal({
   selectedIndex?: number
   loadoutData?: (LoadoutDatum | undefined)[]
   newFirst?: boolean
+  hideSelectedByDefault?: boolean
+  showSelectedAtTopLabel?: string
 }) {
   const { silly } = useContext(SillyContext)
   const database = useDatabase()
   const state = useDataEntryBase(database.displayCharacter)
+  const [showSelectedAtTop, setShowSelectedAtTop] = useState(
+    !hideSelectedByDefault
+  )
+
+  useEffect(() => {
+    if (show) setShowSelectedAtTop(!hideSelectedByDefault)
+  }, [show, hideSelectedByDefault])
 
   const teamCharKeys = useMemo(
     () =>
@@ -108,6 +124,11 @@ export function CharacterSingleSelectionModal({
           database.teamChars.get(loadoutDatum?.teamCharId)?.key ?? ''
       ),
     [database, loadoutData]
+  )
+
+  const activeTeamCharKeys = useMemo(
+    () => teamCharKeys.filter((key): key is CharacterKey => key !== ''),
+    [teamCharKeys]
   )
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -155,7 +176,9 @@ export function CharacterSingleSelectionModal({
         .sort(
           sortFunction(sortByKeys, ascending, sortConfigs, ['new', 'favorite'])
         )
-    return teamCharKeys.filter((key) => key !== '').concat(filteredKeys)
+    return showSelectedAtTop
+      ? activeTeamCharKeys.concat(filteredKeys)
+      : filteredKeys
   }, [
     deferredState,
     newFirst,
@@ -164,6 +187,8 @@ export function CharacterSingleSelectionModal({
     filterConfigs,
     sortConfigs,
     teamCharKeys,
+    showSelectedAtTop,
+    activeTeamCharKeys,
   ])
 
   const onClose = useCallback(() => {
@@ -213,6 +238,23 @@ export function CharacterSingleSelectionModal({
     [onHide, onSelect]
   )
 
+  const extraHeader =
+    hideSelectedByDefault && activeTeamCharKeys.length > 0 ? (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Button
+          size="small"
+          color={showSelectedAtTop ? 'warning' : 'secondary'}
+          startIcon={
+            showSelectedAtTop ? <CheckBoxIcon /> : <CheckBoxOutlineBlankIcon />
+          }
+          onClick={() => setShowSelectedAtTop((v) => !v)}
+        >
+          {showSelectedAtTopLabel ?? 'Exibir Escolhidos no Topo'} (
+          {activeTeamCharKeys.length})
+        </Button>
+      </Box>
+    ) : undefined
+
   return (
     <CharacterSelectionModalBase
       show={show}
@@ -220,6 +262,7 @@ export function CharacterSingleSelectionModal({
       filterSortProps={filterSortProps}
       onDeferredSearchChange={onDeferredSearchChange}
       onClose={onClose}
+      extraHeaderContent={extraHeader}
     >
       <CardContent sx={{ flex: '1', overflow: 'auto' }}>
         <Grid container spacing={1} columns={{ xs: 2, sm: 3, md: 4, lg: 5 }}>
@@ -230,6 +273,247 @@ export function CharacterSingleSelectionModal({
               selectedIndex={selectedIndex}
               teamSlotIndex={teamSlotByKey.get(characterKey) ?? -1}
               onSelect={handleSelect}
+            />
+          ))}
+        </Grid>
+      </CardContent>
+    </CharacterSelectionModalBase>
+  )
+}
+
+export function CharacterBulkSelectionModal({
+  show,
+  onHide,
+  onSelect,
+  selectedCharacterKeys,
+  newFirst = false,
+  showSelectedAtTopLabel = 'Exibir Escolhidos no Topo',
+  confirmLabel = 'Concluir',
+}: {
+  show: boolean
+  onHide: () => void
+  onSelect: (cKeys: CharacterKey[]) => void
+  selectedCharacterKeys: CharacterKey[]
+  newFirst?: boolean
+  showSelectedAtTopLabel?: string
+  confirmLabel?: string
+}) {
+  const { silly } = useContext(SillyContext)
+  const database = useDatabase()
+  const { gender } = useDBMeta()
+  const state = useDataEntryBase(database.displayCharacter)
+
+  const [orderedKeys, setOrderedKeys] = useState<CharacterKey[]>(
+    selectedCharacterKeys
+  )
+  const [showSelectedAtTop, setShowSelectedAtTop] = useState(false)
+
+  useEffect(() => {
+    if (show) {
+      setOrderedKeys(selectedCharacterKeys)
+      setShowSelectedAtTop(false)
+    }
+  }, [show, selectedCharacterKeys])
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const onDeferredSearchChange = useCallback((query: string) => {
+    setSearchQuery(query)
+  }, [])
+  const deferredState = useDeferredValue(state)
+  const charMetaDirty = useDataManagerValues(database.charMeta)
+  const nameSearchFields = useCharacterNameSearchFieldsCache(
+    database.gender,
+    silly
+  )
+  const filterConfigs = useMemo(
+    () => characterFilterConfigs(database, silly, nameSearchFields),
+    [database, silly, nameSearchFields]
+  )
+  const sortConfigs = useMemo(
+    () => characterSortConfigs(database, silly),
+    [database, silly]
+  )
+
+  const slotIndexByKey = useMemo(() => {
+    const map = new Map<CharacterKey, number>()
+    orderedKeys.forEach((key, idx) => {
+      map.set(key, idx)
+    })
+    return map
+  }, [orderedKeys])
+
+  const characterKeyList = useMemo(() => {
+    const { element, weaponType, sortType, ascending } = deferredState
+    const sortByKeys = [
+      ...(newFirst ? ['new'] : []),
+      ...(characterSortMap[sortType] ?? []),
+    ] as CharacterSortKey[]
+    const selectedSet = new Set(orderedKeys)
+    const unselectedFiltered =
+      charMetaDirty &&
+      allCharacterKeys
+        .filter((key) => !selectedSet.has(key))
+        .filter(
+          filterFunction(
+            { element, weaponType, name: searchQuery },
+            filterConfigs
+          )
+        )
+        .sort(
+          sortFunction(sortByKeys, ascending, sortConfigs, ['new', 'favorite'])
+        )
+    return showSelectedAtTop
+      ? [...orderedKeys, ...unselectedFiltered]
+      : unselectedFiltered
+  }, [
+    deferredState,
+    newFirst,
+    charMetaDirty,
+    orderedKeys,
+    searchQuery,
+    filterConfigs,
+    sortConfigs,
+    showSelectedAtTop,
+  ])
+
+  const onToggleChar = useCallback((key: CharacterKey) => {
+    setOrderedKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    )
+  }, [])
+
+  const onClose = useCallback(() => {
+    onSelect(orderedKeys)
+    onHide()
+  }, [onHide, onSelect, orderedKeys])
+
+  const onChangeWeaponFilter = useCallback(
+    (weaponType: WeaponTypeKey[]) => {
+      database.displayCharacter.set({ weaponType })
+    },
+    [database]
+  )
+  const onChangeElementFilter = useCallback(
+    (element: ElementKey[]) => {
+      database.displayCharacter.set({ element })
+    },
+    [database]
+  )
+  const onChangeSort = useCallback(
+    (sortType: CharacterSortKey) => {
+      if (sortType !== 'new') database.displayCharacter.set({ sortType })
+    },
+    [database]
+  )
+  const onChangeAsc = useCallback(
+    (ascending: boolean) => {
+      database.displayCharacter.set({ ascending })
+    },
+    [database]
+  )
+
+  const filterSortProps = useMemo(
+    () => ({
+      onChangeWeaponFilter,
+      onChangeElementFilter,
+      onChangeSort,
+      onChangeAsc,
+    }),
+    [onChangeWeaponFilter, onChangeElementFilter, onChangeSort, onChangeAsc]
+  )
+
+  const extraHeader = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 1,
+        }}
+      >
+        <Button
+          size="small"
+          color={showSelectedAtTop ? 'warning' : 'secondary'}
+          startIcon={
+            showSelectedAtTop ? <CheckBoxIcon /> : <CheckBoxOutlineBlankIcon />
+          }
+          onClick={() => setShowSelectedAtTop((v) => !v)}
+        >
+          {showSelectedAtTopLabel} ({orderedKeys.length})
+        </Button>
+
+        <Button
+          size="small"
+          variant="contained"
+          color="success"
+          startIcon={<CheckIcon />}
+          onClick={onClose}
+        >
+          {confirmLabel} ({orderedKeys.length})
+        </Button>
+      </Box>
+
+      {orderedKeys.length > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.75,
+            flexWrap: 'wrap',
+            maxHeight: 84,
+            overflowY: 'auto',
+            p: 0.75,
+            borderRadius: 1,
+            bgcolor: 'contentDark.main',
+          }}
+        >
+          {orderedKeys.map((ck, idx) => (
+            <Button
+              key={ck}
+              size="small"
+              color="warning"
+              variant="outlined"
+              onClick={() => onToggleChar(ck)}
+              sx={{
+                py: 0.15,
+                px: 0.75,
+                textTransform: 'none',
+                minWidth: 0,
+                gap: 0.5,
+              }}
+            >
+              <SqBadge color="primary">#{idx + 1}</SqBadge>
+              <CharIconSide characterKey={ck} />
+              <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+                <CharacterName characterKey={ck} gender={gender} />
+              </Typography>
+              <CloseIcon sx={{ fontSize: '0.9rem', opacity: 0.8 }} />
+            </Button>
+          ))}
+        </Box>
+      )}
+    </Box>
+  )
+
+  return (
+    <CharacterSelectionModalBase
+      show={show}
+      charactersToShow={characterKeyList}
+      filterSortProps={filterSortProps}
+      onDeferredSearchChange={onDeferredSearchChange}
+      onClose={onClose}
+      extraHeaderContent={extraHeader}
+    >
+      <CardContent sx={{ flex: '1', overflow: 'auto' }}>
+        <Grid container spacing={1} columns={{ xs: 2, sm: 3, md: 4, lg: 5 }}>
+          {characterKeyList.map((characterKey) => (
+            <MultiSelectGridRow
+              key={characterKey}
+              characterKey={characterKey}
+              teamSlotIndex={slotIndexByKey.get(characterKey) ?? -1}
+              onSelect={onToggleChar}
             />
           ))}
         </Grid>
@@ -460,6 +744,7 @@ type CharacterSelectionModalBaseProps = {
   filterSortProps: CharacterSelectionFilterSortProps
   onDeferredSearchChange: (search: string) => void
   onClose: () => void
+  extraHeaderContent?: React.ReactNode
   children: React.ReactNode
 }
 const sortKeys = Object.keys(characterSortMap)
@@ -470,6 +755,7 @@ function CharacterSelectionModalBase({
   filterSortProps,
   onDeferredSearchChange,
   onClose,
+  extraHeaderContent,
   children,
 }: CharacterSelectionModalBaseProps) {
   const { t } = useTranslation([
@@ -624,6 +910,7 @@ function CharacterSelectionModalBase({
               }
             />
           </Box>
+          {extraHeaderContent}
         </CardContent>
         <Divider />
         <DataContext.Provider value={teamDataContextValue}>
@@ -770,20 +1057,18 @@ const MultiSelectCardWrapper = memo(function MultiSelectCardWrapper({
           {favorite ? <FavoriteIcon /> : <FavoriteBorderIcon />}
         </IconButton>
         {isInTeam && (
-          <Typography variant="body2" sx={{ flexGrow: 1 }}>
-            <SqBadge
-              color={'warning'}
-              sx={{
-                position: 'absolute',
-                top: 60,
-                left: 204,
-                zIndex: 2,
-                textShadow: '0 0 5px gray',
-              }}
-            >
-              {teamSlotIndex + 1}
-            </SqBadge>
-          </Typography>
+          <SqBadge
+            color={'warning'}
+            sx={{
+              position: 'absolute',
+              bottom: 6,
+              right: 8,
+              zIndex: 2,
+              textShadow: '0 0 5px gray',
+            }}
+          >
+            {teamSlotIndex + 1}
+          </SqBadge>
         )}
         {children}
       </CardThemed>

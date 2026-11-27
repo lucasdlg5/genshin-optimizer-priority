@@ -47,6 +47,7 @@ import { GOSolver, mergeBuilds } from '@genshin-optimizer/gi/solver'
 import { compactArtifacts } from '@genshin-optimizer/gi/solver-tc'
 import {
   ArtifactCardNano,
+  CharacterBulkSelectionModal,
   CharacterName,
   CharacterSingleSelectionModal,
   CharIconSide,
@@ -80,6 +81,7 @@ import {
   CheckBoxOutlineBlank,
   Close,
   DeleteForever,
+  Filter4,
   GroupAdd,
   PlayArrow,
 } from '@mui/icons-material'
@@ -181,6 +183,8 @@ export function PageBulkBuild() {
   )
 
   const [showAddCharModal, onOpenAddChar, onCloseAddChar] = useBoolState(false)
+  const [showMultiAddModal, onOpenMultiAdd, onCloseMultiAdd] =
+    useBoolState(false)
   const [maxWorkers, nativeThreads, setMaxWorkers] = useNumWorkers()
 
   const [progress, setProgress] = useState<BulkProgressState>({
@@ -196,13 +200,30 @@ export function PageBulkBuild() {
   const [results, setResults] = useState<BulkBuildResultItem[]>([])
   const cancelRef = useRef<() => void>(() => {})
 
-  // Ensure or create a team + teamChar for a standalone character picked from modal
-  const handleAddCharacter = useCallback(
-    (charKey: CharacterKey) => {
-      onCloseAddChar()
+  const queuedCharKeys = useMemo(
+    () =>
+      queue
+        .map((q) => database.teamChars.get(q.teamCharId)?.key)
+        .filter(notEmpty),
+    [queue, database]
+  )
+
+  const queuedLoadoutData = useMemo(
+    () =>
+      queue.map(
+        (q) =>
+          ({
+            teamCharId: q.teamCharId,
+            buildType: 'equipped',
+          }) as LoadoutDatum
+      ),
+    [queue]
+  )
+
+  const resolveOrCreateQueueItem = useCallback(
+    (charKey: CharacterKey): BulkQueueItem => {
       database.chars.getWithInitWeapon(charKey)
 
-      // Try to find an existing team that already contains this character
       let foundTeamId: string | undefined
       let foundTeamCharId: string | undefined
       for (const [tId, team] of database.teams.entries) {
@@ -217,7 +238,6 @@ export function PageBulkBuild() {
       }
 
       if (!foundTeamId || !foundTeamCharId) {
-        // Reuse existing teamChar or create one, and create a solo team container
         foundTeamCharId =
           database.teamChars.keys.find(
             (k) => database.teamChars.get(k)?.key === charKey
@@ -233,26 +253,58 @@ export function PageBulkBuild() {
         })
       }
 
-      if (
-        queue.some(
-          (q) => q.teamId === foundTeamId && q.teamCharId === foundTeamCharId
-        )
-      )
-        return
-
-      setQueue([
-        ...queue,
-        {
-          id: makeQueueId(),
-          teamId: foundTeamId,
-          teamCharId: foundTeamCharId,
-          enabled: true,
-          optWeapon: false,
-          autoEquip: true,
-        },
-      ])
+      const tc = database.teamChars.get(foundTeamCharId)
+      return {
+        id: makeQueueId(),
+        teamId: foundTeamId,
+        teamCharId: foundTeamCharId,
+        enabled: true,
+        optWeapon: Boolean(
+          tc && database.optConfigs.get(tc.optConfigId)?.optWeapon
+        ),
+        autoEquip: true,
+      }
     },
-    [database, onCloseAddChar, queue, setQueue]
+    [database]
+  )
+
+  // Ensure or create a team + teamChar for a standalone character picked from modal
+  const handleAddCharacter = useCallback(
+    (charKey: CharacterKey) => {
+      onCloseAddChar()
+      if (queuedCharKeys.includes(charKey)) return
+      const newItem = resolveOrCreateQueueItem(charKey)
+      setQueue([...queue, newItem])
+    },
+    [onCloseAddChar, queuedCharKeys, resolveOrCreateQueueItem, queue, setQueue]
+  )
+
+  const handleBulkSelectCharacters = useCallback(
+    (selectedKeys: CharacterKey[]) => {
+      const existingByCharKey = new Map<CharacterKey, BulkQueueItem>()
+      for (const item of queue) {
+        const ck = database.teamChars.get(item.teamCharId)?.key
+        if (ck && !existingByCharKey.has(ck)) {
+          existingByCharKey.set(ck, item)
+        }
+      }
+
+      const nextQueue: BulkQueueItem[] = []
+      const seen = new Set<CharacterKey>()
+      for (const ck of selectedKeys) {
+        if (seen.has(ck)) continue
+        seen.add(ck)
+        const existing = existingByCharKey.get(ck)
+        if (existing) {
+          nextQueue.push(existing)
+        } else {
+          nextQueue.push(resolveOrCreateQueueItem(ck))
+        }
+      }
+
+      setQueue(nextQueue)
+    },
+    [queue, database, resolveOrCreateQueueItem, setQueue]
   )
 
   const handleImportAllTeams = useCallback(() => {
@@ -906,6 +958,25 @@ export function PageBulkBuild() {
           show={showAddCharModal}
           onHide={onCloseAddChar}
           onSelect={handleAddCharacter}
+          loadoutData={queuedLoadoutData}
+          hideSelectedByDefault
+          showSelectedAtTopLabel={t(
+            'bulkBuild.showSelectedAtTop',
+            'Exibir Já Escolhidos no Topo'
+          )}
+        />
+      </Suspense>
+      <Suspense fallback={false}>
+        <CharacterBulkSelectionModal
+          show={showMultiAddModal}
+          onHide={onCloseMultiAdd}
+          onSelect={handleBulkSelectCharacters}
+          selectedCharacterKeys={queuedCharKeys}
+          showSelectedAtTopLabel={t(
+            'bulkBuild.showSelectedAtTop',
+            'Exibir Já Escolhidos no Topo'
+          )}
+          confirmLabel={t('bulkBuild.confirmSelectionBtn', 'Concluir')}
         />
       </Suspense>
 
@@ -958,6 +1029,17 @@ export function PageBulkBuild() {
                 onClick={onOpenAddChar}
               >
                 {t('bulkBuild.addCharBtn', 'Adicionar Personagem')}
+              </Button>
+              <Button
+                color="primary"
+                startIcon={<Filter4 />}
+                disabled={progress.running}
+                onClick={onOpenMultiAdd}
+              >
+                {t(
+                  'bulkBuild.quickMultiAddBtn',
+                  'Ajustes Rápidos (Adicionar Múltiplos)'
+                )}
               </Button>
               <Button
                 color="info"
