@@ -137,6 +137,8 @@
     "levelFilter": "Filtro de Nível de Arma",
     "useEquipped": "Usar Armas Equipadas",
     "useTeammate": "Usar Armas dos Aliados",
+    "hideDuplicates": "Esconder Armas Repetidas",
+    "hiddenCountBadge": "{{count}} repetidas ocultas",
     "eligibleWeapons": "Armas Elegíveis",
     "maxAllUnique": "Ativar Todas (Sem Repetir) & Efeitos no Máximo",
     "includeAll": "Incluir Todas",

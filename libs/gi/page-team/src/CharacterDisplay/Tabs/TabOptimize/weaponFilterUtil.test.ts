@@ -46,6 +46,7 @@ function makeOptConfig(overrides: Partial<OptConfig> = {}): OptConfig {
     weaponLevelHigh: 90,
     useEquippedWeapon: false,
     useTeammateWeapon: false,
+    hideDuplicateWeapons: false,
     weaponExclusion: [],
     kqmsErEnabled: false,
     kqmsRotationDuration: 20,

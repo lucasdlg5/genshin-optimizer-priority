@@ -189,6 +189,8 @@
     "levelFilter": "Weapon Level Filter",
     "useEquipped": "Use Equipped Weapons",
     "useTeammate": "Use Teammates' Weapons",
+    "hideDuplicates": "Hide Duplicate Weapons",
+    "hiddenCountBadge": "{{count}} duplicates hidden",
     "eligibleWeapons": "Eligible Weapons",
     "maxAllUnique": "Enable All Unique Weapons & Max Effects",
     "includeAll": "Include All",

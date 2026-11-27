@@ -125,6 +125,7 @@ const optConfigSchema = z.object({
   weaponLevelHigh: zodClampedNumber(1, 90, 90),
   useEquippedWeapon: zodBoolean(),
   useTeammateWeapon: zodBoolean(),
+  hideDuplicateWeapons: zodBoolean(),
   weaponExclusion: z.array(z.string()).catch([]),
   kqmsErEnabled: zodBoolean(),
   kqmsRotationDuration: zodClampedNumber(12, 35, 20),

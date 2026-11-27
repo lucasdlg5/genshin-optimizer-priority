@@ -283,6 +283,7 @@ function WeaponFilterModalContent({
     weaponLevelHigh,
     useEquippedWeapon,
     useTeammateWeapon,
+    hideDuplicateWeapons,
     weaponExclusion,
   } = optConfig
 
@@ -320,6 +321,7 @@ function WeaponFilterModalContent({
           getWeaponStat(b.key).rarity - getWeaponStat(a.key).rarity
         if (rarityDiff !== 0) return rarityDiff
         if (b.level !== a.level) return b.level - a.level
+        if (b.ascension !== a.ascension) return b.ascension - a.ascension
         return b.refinement - a.refinement
       })
   }, [
@@ -333,6 +335,33 @@ function WeaponFilterModalContent({
     teammateWeaponIds,
     locKey,
   ])
+
+  const duplicateCountByKey = useMemo(() => {
+    const counts = new Map<WeaponKey, number>()
+    for (const w of candidatePoolWeapons) {
+      counts.set(w.key, (counts.get(w.key) ?? 0) + 1)
+    }
+    return counts
+  }, [candidatePoolWeapons])
+
+  const displayedPoolWeapons = useMemo(() => {
+    if (!hideDuplicateWeapons) return candidatePoolWeapons
+    const excludedSet = new Set(weaponExclusion)
+    const bestByKey = new Map<WeaponKey, ICachedWeapon>()
+    for (const w of candidatePoolWeapons) {
+      const existing = bestByKey.get(w.key)
+      if (!existing) {
+        bestByKey.set(w.key, w)
+      } else if (excludedSet.has(existing.id) && !excludedSet.has(w.id)) {
+        // Prefer showing an active (non-excluded) copy if one is currently enabled
+        bestByKey.set(w.key, w)
+      }
+    }
+    return Array.from(bestByKey.values())
+  }, [hideDuplicateWeapons, candidatePoolWeapons, weaponExclusion])
+
+  const hiddenDuplicatesCount =
+    candidatePoolWeapons.length - displayedPoolWeapons.length
 
   // Representative weapons (1 per unique weaponKey) that have conditional documents
   const weaponsWithConditionals = useMemo(() => {
@@ -366,20 +395,69 @@ function WeaponFilterModalContent({
   }, [conditional, weaponKeysOfType, database, teamCharId])
 
   const toggleWeaponExclusion = useCallback(
-    (weaponId: string) => {
-      database.optConfigs.set(optConfigId, {
-        weaponExclusion: toggleArr(weaponExclusion, weaponId),
-      })
+    (weapon: ICachedWeapon) => {
+      if (!hideDuplicateWeapons) {
+        database.optConfigs.set(optConfigId, {
+          weaponExclusion: toggleArr(weaponExclusion, weapon.id),
+        })
+        return
+      }
+      // When duplicates are hidden: excluding excludes all copies of this WeaponKey;
+      // including enables only this single representative copy while keeping duplicates excluded.
+      const isCurrentlyExcluded = weaponExclusion.includes(weapon.id)
+      const sameKeyIds = candidatePoolWeapons
+        .filter((w) => w.key === weapon.key)
+        .map((w) => w.id)
+      const sameKeySet = new Set(sameKeyIds)
+
+      if (isCurrentlyExcluded) {
+        const otherDuplicateIds = sameKeyIds.filter((id) => id !== weapon.id)
+        const cleaned = weaponExclusion.filter((id) => !sameKeySet.has(id))
+        database.optConfigs.set(optConfigId, {
+          weaponExclusion: [...cleaned, ...otherDuplicateIds],
+        })
+      } else {
+        const merged = Array.from(new Set([...weaponExclusion, ...sameKeyIds]))
+        database.optConfigs.set(optConfigId, {
+          weaponExclusion: merged,
+        })
+      }
     },
-    [database, optConfigId, weaponExclusion]
+    [
+      hideDuplicateWeapons,
+      database,
+      optConfigId,
+      weaponExclusion,
+      candidatePoolWeapons,
+    ]
   )
 
   const includeAllWeapons = useCallback(() => {
-    const poolIds = new Set(candidatePoolWeapons.map((w) => w.id))
+    if (!hideDuplicateWeapons) {
+      const poolIds = new Set(candidatePoolWeapons.map((w) => w.id))
+      database.optConfigs.set(optConfigId, {
+        weaponExclusion: weaponExclusion.filter((id) => !poolIds.has(id)),
+      })
+      return
+    }
+    // When duplicates are hidden, include only the visible unique representative copies
+    const allPoolIds = new Set(candidatePoolWeapons.map((w) => w.id))
+    const visibleIds = new Set(displayedPoolWeapons.map((w) => w.id))
+    const duplicateIds = candidatePoolWeapons
+      .filter((w) => !visibleIds.has(w.id))
+      .map((w) => w.id)
+    const preserved = weaponExclusion.filter((id) => !allPoolIds.has(id))
     database.optConfigs.set(optConfigId, {
-      weaponExclusion: weaponExclusion.filter((id) => !poolIds.has(id)),
+      weaponExclusion: [...preserved, ...duplicateIds],
     })
-  }, [candidatePoolWeapons, database, optConfigId, weaponExclusion])
+  }, [
+    hideDuplicateWeapons,
+    candidatePoolWeapons,
+    displayedPoolWeapons,
+    database,
+    optConfigId,
+    weaponExclusion,
+  ])
 
   const excludeAllWeapons = useCallback(() => {
     const merged = Array.from(
@@ -412,9 +490,9 @@ function WeaponFilterModalContent({
               optConfigId={optConfigId}
             />
 
-            {/* Equipment Toggles */}
+            {/* Equipment & Duplicate Visibility Toggles */}
             <Grid container spacing={1}>
-              <Grid size={{ xs: 12, sm: 6 }}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <Button
                   fullWidth
                   disabled={disabled}
@@ -431,7 +509,7 @@ function WeaponFilterModalContent({
                   {t('weaponFilter.useEquipped', 'Use Equipped Weapons')}
                 </Button>
               </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
+              <Grid size={{ xs: 12, sm: 4 }}>
                 <Button
                   fullWidth
                   disabled={disabled}
@@ -446,6 +524,27 @@ function WeaponFilterModalContent({
                   }
                 >
                   {t('weaponFilter.useTeammate', "Use Teammates' Weapons")}
+                </Button>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 4 }}>
+                <Button
+                  fullWidth
+                  disabled={disabled}
+                  startIcon={
+                    hideDuplicateWeapons ? (
+                      <CheckBox />
+                    ) : (
+                      <CheckBoxOutlineBlank />
+                    )
+                  }
+                  color={hideDuplicateWeapons ? 'success' : 'secondary'}
+                  onClick={() =>
+                    database.optConfigs.set(optConfigId, {
+                      hideDuplicateWeapons: !hideDuplicateWeapons,
+                    })
+                  }
+                >
+                  {t('weaponFilter.hideDuplicates', 'Esconder Armas Repetidas')}
                 </Button>
               </Grid>
             </Grid>
@@ -466,8 +565,16 @@ function WeaponFilterModalContent({
                     {t('weaponFilter.eligibleWeapons', 'Eligible Weapons')}
                   </Typography>
                   <SqBadge color={filteredWeapons.length ? 'info' : 'error'}>
-                    {filteredWeapons.length} / {candidatePoolWeapons.length}
+                    {filteredWeapons.length} / {displayedPoolWeapons.length}
                   </SqBadge>
+                  {hideDuplicateWeapons && hiddenDuplicatesCount > 0 && (
+                    <SqBadge color="secondary">
+                      {t('weaponFilter.hiddenCountBadge', {
+                        count: hiddenDuplicatesCount,
+                        defaultValue: `${hiddenDuplicatesCount} repetidas ocultas`,
+                      })}
+                    </SqBadge>
+                  )}
                   <Box
                     sx={{
                       ml: 'auto',
@@ -491,7 +598,7 @@ function WeaponFilterModalContent({
                     <Button
                       size="small"
                       color="info"
-                      disabled={disabled || !candidatePoolWeapons.length}
+                      disabled={disabled || !displayedPoolWeapons.length}
                       onClick={includeAllWeapons}
                     >
                       {t('weaponFilter.includeAll', 'Include All')}
@@ -499,14 +606,14 @@ function WeaponFilterModalContent({
                     <Button
                       size="small"
                       color="secondary"
-                      disabled={disabled || !candidatePoolWeapons.length}
+                      disabled={disabled || !displayedPoolWeapons.length}
                       onClick={excludeAllWeapons}
                     >
                       {t('weaponFilter.excludeAll', 'Exclude All')}
                     </Button>
                   </Box>
                 </Box>
-                {candidatePoolWeapons.length === 0 ? (
+                {displayedPoolWeapons.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
                     {t(
                       'weaponFilter.noWeapons',
@@ -515,15 +622,16 @@ function WeaponFilterModalContent({
                   </Typography>
                 ) : (
                   <Grid container spacing={1} columns={{ xs: 1, sm: 2, md: 3 }}>
-                    {candidatePoolWeapons.map((weapon) => {
+                    {displayedPoolWeapons.map((weapon) => {
                       const excluded = weaponExclusion.includes(weapon.id)
                       const rarity = getWeaponStat(weapon.key).rarity
+                      const dupCount = duplicateCountByKey.get(weapon.key) ?? 1
                       return (
                         <Grid key={weapon.id} size={1}>
                           <Button
                             fullWidth
                             disabled={disabled}
-                            onClick={() => toggleWeaponExclusion(weapon.id)}
+                            onClick={() => toggleWeaponExclusion(weapon)}
                             color={excluded ? 'secondary' : 'success'}
                             variant="outlined"
                             sx={{
@@ -588,6 +696,9 @@ function WeaponFilterModalContent({
                                       weapon.location
                                     )}
                                   />
+                                )}
+                                {hideDuplicateWeapons && dupCount > 1 && (
+                                  <SqBadge color="info">×{dupCount}</SqBadge>
                                 )}
                               </Box>
                             </Box>
