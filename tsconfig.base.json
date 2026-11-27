@@ -151,6 +151,7 @@
       "@genshin-optimizer/gi/upopt": ["./libs/gi/upopt/src/index.ts"],
       "@genshin-optimizer/gi/util": ["./libs/gi/util/src/index.ts"],
       "@genshin-optimizer/gi/wr": ["./libs/gi/wr/src/index.ts"],
+      "@genshin-optimizer/gi/wr/opt": ["./libs/gi/wr/src/opt.ts"],
       "@genshin-optimizer/gi/wr-types": ["./libs/gi/wr-types/src/index.ts"],
       "@genshin-optimizer/pando/engine": ["./libs/pando/engine/src/index.ts"],
       "@genshin-optimizer/sr/assets": ["./libs/sr/assets/src/index.ts"],

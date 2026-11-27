@@ -1,5 +1,5 @@
-import type { OptNode } from '@genshin-optimizer/gi/wr'
-import { optimize, precompute } from '@genshin-optimizer/gi/wr'
+import type { OptNode } from '@genshin-optimizer/gi/wr/opt'
+import { optimize, precompute } from '@genshin-optimizer/gi/wr/opt'
 import type {
   ArtifactBuildData,
   ArtifactsBySlot,

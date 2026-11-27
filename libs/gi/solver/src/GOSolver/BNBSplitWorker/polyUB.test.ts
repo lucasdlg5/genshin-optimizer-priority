@@ -607,5 +607,96 @@ describe('polyUB', () => {
 
       expect(() => polyUB([n], fakeArts)).toThrow()
     })
+    test('many set thresholds in shared DAG product avoids exponential blowup', () => {
+      const setThresholds = Array.from({ length: 24 }, (_, idx) =>
+        threshold(customRead(['dyn', `s${idx}`]), 4, 0.18 + (idx % 3) * 0.05, 0)
+      )
+      const sharedAtk = sum(
+        1000,
+        prod(850, sum(customRead(['dyn', 'atk_']), ...setThresholds))
+      )
+      const sharedEm = sum(
+        customRead(['dyn', 'eleMas']),
+        min(prod(sharedAtk, 0.08), 200)
+      )
+      const stellarTarget = prod(
+        sharedAtk,
+        sum(1, min(prod(sharedAtk, 0.0002), 0.8)),
+        sum(1, prod(2.5, frac(sharedEm, 1400)), ...setThresholds.slice(0, 12)),
+        sum(
+          1,
+          prod(
+            min(
+              1,
+              sum(
+                customRead(['dyn', 'critRate_']),
+                ...setThresholds.slice(0, 6)
+              )
+            ),
+            sum(customRead(['dyn', 'critDMG_']), ...setThresholds.slice(6, 12))
+          )
+        )
+      )
+      const arts: ArtifactsBySlot = {
+        base: { atk_: 0.2, eleMas: 40, critRate_: 0.05, critDMG_: 0.5 },
+        values: {
+          flower: Array.from({ length: 24 }, (_, i) => ({
+            id: `f${i}`,
+            values: { [`s${i}`]: 1, atk_: 0.05 },
+          })),
+          plume: Array.from({ length: 24 }, (_, i) => ({
+            id: `p${i}`,
+            values: { [`s${i}`]: 1, critRate_: 0.06 },
+          })),
+          sands: Array.from({ length: 24 }, (_, i) => ({
+            id: `sa${i}`,
+            values: { [`s${i}`]: 1, eleMas: 187 },
+          })),
+          goblet: Array.from({ length: 24 }, (_, i) => ({
+            id: `g${i}`,
+            values: { [`s${i}`]: 1, atk_: 0.466 },
+          })),
+          circlet: Array.from({ length: 24 }, (_, i) => ({
+            id: `c${i}`,
+            values: { [`s${i}`]: 1, critDMG_: 0.622 },
+          })),
+        },
+      }
+
+      const t0 = performance.now()
+      const p = polyUB([stellarTarget], arts)
+      const l = linearUB([stellarTarget], arts)
+      const elapsed = performance.now() - t0
+      expect(elapsed).toBeLessThan(2000)
+
+      const compute = precompute(
+        [stellarTarget],
+        arts.base,
+        (f) => f.path[1],
+        5
+      )
+      for (let i = 0; i < 6; i++) {
+        const sample = [
+          arts.values.flower[i],
+          arts.values.plume[i],
+          arts.values.sands[i],
+          arts.values.goblet[i],
+          arts.values.circlet[(i + 1) % 24],
+        ]
+        const x: DynStat = { ...arts.base }
+        for (const a of sample) {
+          for (const [k, v] of Object.entries(a.values)) {
+            x[k] = (x[k] ?? 0) + v
+          }
+        }
+        const actual = compute(sample)[0]
+        expect(evalPoly(p, x)[0]).toBeGreaterThanOrEqual(
+          actual - prettyMuchZero
+        )
+        expect(evalLinear(l, x)[0]).toBeGreaterThanOrEqual(
+          actual - prettyMuchZero
+        )
+      }
+    })
   })
 })

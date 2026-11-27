@@ -6,24 +6,40 @@ import {
   filterArts,
   filterFeasiblePerm,
 } from '../common.js'
-import type { WorkerCommand, WorkerResult } from '../type.js'
+import type { Setup, WorkerCommand, WorkerResult } from '../type.js'
 import { BNBSplitWorker } from './BNBSplitWorker/index.js'
 import { ComputeWorker } from './ComputeWorker.js'
 import { DefaultSplitWorker } from './DefaultSplitWorker.js'
 
 declare function postMessage(command: WorkerCommand | WorkerResult): void
 
-let splitWorker: SplitWorker, computeWorker: ComputeWorker
+let setupData: Setup | undefined
+let splitWorker: SplitWorker | undefined
+let computeWorker: ComputeWorker | undefined
+let latestThreshold = Number.NEGATIVE_INFINITY
+
+function getOrCreateSplitWorker(): SplitWorker {
+  if (!splitWorker) {
+    if (!setupData) throw new Error('Worker not initialized with setup')
+    try {
+      splitWorker = new BNBSplitWorker(setupData, (x) => postMessage(x))
+    } catch {
+      splitWorker = new DefaultSplitWorker(setupData, (x) => postMessage(x))
+    }
+    if (latestThreshold > Number.NEGATIVE_INFINITY) {
+      splitWorker.setThreshold(latestThreshold)
+    }
+  }
+  return splitWorker
+}
 
 async function handleEvent(e: MessageEvent<WorkerCommand>): Promise<void> {
   const { data } = e,
     { command } = data
   switch (command) {
-    case 'split':
-      for (const filter of splitWorker.split(
-        data.filter,
-        data.maxIterateSize
-      )) {
+    case 'split': {
+      const sw = getOrCreateSplitWorker()
+      for (const filter of sw.split(data.filter, data.maxIterateSize)) {
         postMessage({ command: 'iterate', filter })
         // Suspend here in case a `threshold` is sent over
         //
@@ -34,26 +50,32 @@ async function handleEvent(e: MessageEvent<WorkerCommand>): Promise<void> {
         await new Promise((r) => setTimeout(r))
       }
       break
+    }
     case 'iterate':
-      computeWorker.compute(data.filter)
+      computeWorker!.compute(data.filter)
       break
     case 'threshold': {
-      splitWorker.setThreshold(data.threshold)
-      computeWorker.setThreshold(data.threshold)
+      if (data.threshold > latestThreshold) {
+        latestThreshold = data.threshold
+      }
+      splitWorker?.setThreshold(data.threshold)
+      computeWorker?.setThreshold(data.threshold)
       return // This is a fire-and-forget command
     }
     case 'finalize': {
-      computeWorker.refresh(true)
-      const { builds, plotData } = computeWorker
+      computeWorker!.refresh(true)
+      const { builds, plotData } = computeWorker!
       postMessage({ resultType: 'finalize', builds, plotData })
       // Immediately drop problem references inside worker so GC can reclaim memory between passes
-      ;(splitWorker as unknown) = undefined
-      ;(computeWorker as unknown) = undefined
+      setupData = undefined
+      splitWorker = undefined
+      computeWorker = undefined
+      latestThreshold = Number.NEGATIVE_INFINITY
       break
     }
     case 'count': {
       const { exclusion, maxIterateSize } = data,
-        arts = computeWorker.arts
+        arts = computeWorker!.arts
       const perms = filterFeasiblePerm(
         artSetPerm(
           exclusion,
@@ -72,13 +94,10 @@ async function handleEvent(e: MessageEvent<WorkerCommand>): Promise<void> {
       break
     }
     case 'setup':
-      ;(splitWorker as unknown) = undefined
-      ;(computeWorker as unknown) = undefined
-      try {
-        splitWorker = new BNBSplitWorker(data, (x) => postMessage(x))
-      } catch {
-        splitWorker = new DefaultSplitWorker(data, (x) => postMessage(x))
-      }
+      setupData = data
+      splitWorker = undefined
+      computeWorker = undefined
+      latestThreshold = data.initialThreshold ?? Number.NEGATIVE_INFINITY
       computeWorker = new ComputeWorker(data, (x) => postMessage(x))
       break
     default:

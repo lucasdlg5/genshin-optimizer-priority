@@ -14,7 +14,7 @@ import type {
   ArtSetExclusion,
   ArtSetExclusionKey,
 } from '@genshin-optimizer/gi/db'
-import type { ConstantNode, OptNode } from '@genshin-optimizer/gi/wr'
+import type { ConstantNode, OptNode } from '@genshin-optimizer/gi/wr/opt'
 import {
   allOperations,
   constant,
@@ -26,7 +26,7 @@ import {
   min,
   sum,
   threshold,
-} from '@genshin-optimizer/gi/wr'
+} from '@genshin-optimizer/gi/wr/opt'
 
 type MicropassOperation =
   | 'reaffine'

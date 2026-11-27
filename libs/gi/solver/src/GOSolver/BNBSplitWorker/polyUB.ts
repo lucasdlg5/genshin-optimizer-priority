@@ -1,15 +1,16 @@
-import { assertUnreachable, cartesian } from '@genshin-optimizer/common/util'
-import type { ConstantNode, OptNode } from '@genshin-optimizer/gi/wr'
+import { assertUnreachable } from '@genshin-optimizer/common/util'
+import type { ConstantNode, OptNode } from '@genshin-optimizer/gi/wr/opt'
 import {
   allOperations,
   customMapFormula,
   forEachNodes,
   prod,
   threshold,
-} from '@genshin-optimizer/gi/wr'
+} from '@genshin-optimizer/gi/wr/opt'
 import type { ArtifactsBySlot, MinMax } from '../../common.js'
 import { computeFullArtRange, computeNodeRange } from '../../common.js'
-import type { Linear } from './linearUB.js'
+import type { Linear } from './linbound.js'
+import { linbound } from './linbound.js'
 
 /**
  * With xi being the variables and pi(x1, x2, ...) being polynomials on xi
@@ -301,7 +302,12 @@ export function polyUB(
     }
   )
 
-  return poly.map((p) => expandPoly(p))
+  const expandCaches = {
+    upper: new Map<PolynomialWithBounds, readonly Monomial[]>(),
+    lower: new Map<PolynomialWithBounds, readonly Monomial[]>(),
+    exact: new Map<PolynomialWithBounds, readonly Monomial[]>(),
+  }
+  return poly.map((p) => expandPoly(p, statMinMax, expandCaches))
 }
 
 export type SumOfMonomials = Monomial[]
@@ -309,72 +315,265 @@ type Monomial = {
   $k: number
   terms: string[]
 }
-function constM(v: number): Monomial {
-  return { $k: v, terms: [] }
+
+const MAX_MONOMIALS = 60_000
+const MAX_MONOMIAL_DEGREE = 8
+const COLLAPSE_PRODUCT_LIMIT = 8_192
+
+function mergeSortedTerms(
+  a: readonly string[],
+  b: readonly string[]
+): string[] {
+  if (a.length === 0) return [...b]
+  if (b.length === 0) return [...a]
+  const out = new Array<string>(a.length + b.length)
+  let i = 0
+  let j = 0
+  let k = 0
+  while (i < a.length && j < b.length) {
+    if (a[i] <= b[j]) out[k++] = a[i++]
+    else out[k++] = b[j++]
+  }
+  while (i < a.length) out[k++] = a[i++]
+  while (j < b.length) out[k++] = b[j++]
+  return out
 }
-function weightedReadM(key: string, v: number): Monomial {
-  return { $k: v, terms: [key] }
-}
-function sumM(...monomials: Monomial[][]): Monomial[] {
-  return monomials.flat()
-}
-function prodM(...monomials: Monomial[][]): Monomial[] {
-  monomials = monomials.map((mons) => mons.filter((m) => m.$k))
-  return cartesian(...monomials).map((monos) =>
-    monos.reduce(
-      (ret, nxt) => {
-        ret.$k *= nxt.$k
-        ret.terms.push(...nxt.terms)
-        return ret
-      },
-      { $k: 1, terms: [] }
-    )
-  )
-}
-function foldLikeTerms(mon: Monomial[]): Monomial[] {
-  mon = mon.filter((m) => m.$k)
-  mon.forEach((m) => m.terms.sort())
-  mon.sort(({ terms: termsA }, { terms: termsB }) => {
+
+function finalizeMonomialMap(acc: Map<string, Monomial>): Monomial[] {
+  const result: Monomial[] = []
+  for (const m of acc.values()) {
+    if (m.$k !== 0) result.push(m)
+  }
+  result.sort(({ terms: termsA }, { terms: termsB }) => {
     if (termsA.length !== termsB.length) return termsA.length - termsB.length
     for (let i = 0; i < termsA.length; i++) {
       if (termsA[i] !== termsB[i]) return termsA[i] < termsB[i] ? -1 : +1
     }
     return 0
   })
-
-  for (let i = mon.length - 2; i >= 0; i--) {
-    if (mon[i].$k === 0) {
-      mon.splice(i, 1)
-      continue
-    }
-    const a = mon[i].terms
-    const b = mon[i + 1].terms
-    if (a.length !== b.length) continue
-    if (a.every((ai, i) => ai === b[i])) {
-      mon[i].$k = mon[i].$k + mon[i + 1].$k
-      mon.splice(i + 1, 1)
-    }
-  }
-  return mon
+  return result
 }
-function expandPoly(node: PolynomialWithBounds): SumOfMonomials {
-  function toExpandedPoly(n: PolynomialWithBounds): Monomial[] {
-    switch (n.type) {
-      case 'lin':
-        return Object.entries(n.lin)
-          .filter(([_, v]) => v !== 0)
-          .map(([k, v]) => {
-            if (k === '$c') return constM(v)
-            return weightedReadM(k, v)
-          })
-      case 'sum':
-        return sumM(...n.terms.map((t) => toExpandedPoly(t)), [constM(n.$c)])
-      case 'prod':
-        return prodM(...n.terms.map((t) => toExpandedPoly(t)), [constM(n.$k)])
+
+function addFoldedLists(
+  lists: readonly (readonly Monomial[])[],
+  c: number
+): Monomial[] {
+  const acc = new Map<string, Monomial>()
+  if (c !== 0) {
+    acc.set('', { $k: c, terms: [] })
+  }
+  for (const list of lists) {
+    for (const m of list) {
+      if (m.$k === 0) continue
+      const key = m.terms.join('\0')
+      const existing = acc.get(key)
+      if (existing) {
+        existing.$k += m.$k
+      } else {
+        if (acc.size >= MAX_MONOMIALS) {
+          throw new PolyError('Excessive monomial count', 'add')
+        }
+        acc.set(key, { $k: m.$k, terms: [...m.terms] })
+      }
     }
   }
+  return finalizeMonomialMap(acc)
+}
 
-  return foldLikeTerms(toExpandedPoly(node))
+function multiplyFoldedPair(
+  a: readonly Monomial[],
+  b: readonly Monomial[]
+): Monomial[] {
+  if (a.length === 0 || b.length === 0) return []
+  const acc = new Map<string, Monomial>()
+  for (let i = 0; i < a.length; i++) {
+    const ma = a[i]
+    if (ma.$k === 0) continue
+    for (let j = 0; j < b.length; j++) {
+      const mb = b[j]
+      if (mb.$k === 0) continue
+      const k = ma.$k * mb.$k
+      if (k === 0) continue
+      const terms = mergeSortedTerms(ma.terms, mb.terms)
+      if (terms.length > MAX_MONOMIAL_DEGREE) {
+        throw new PolyError('Excessive polynomial degree', 'mul')
+      }
+      const key = terms.join('\0')
+      const existing = acc.get(key)
+      if (existing) {
+        existing.$k += k
+      } else {
+        if (acc.size >= MAX_MONOMIALS) {
+          throw new PolyError('Excessive monomial count', 'mul')
+        }
+        acc.set(key, { $k: k, terms })
+      }
+    }
+  }
+  return finalizeMonomialMap(acc)
+}
+
+function collapseToLinearMonomials(
+  mons: readonly Monomial[],
+  minMax: Record<string, MinMax>,
+  direction: 'upper' | 'lower'
+): Monomial[] {
+  const acc = new Map<string, Monomial>()
+  const addTerm = (key: string, val: number) => {
+    if (val === 0) return
+    const ex = acc.get(key)
+    if (ex) ex.$k += val
+    else acc.set(key, { $k: val, terms: key ? [key] : [] })
+  }
+
+  for (let idx = 0; idx < mons.length; idx++) {
+    const mon = mons[idx]
+    const weight = mon.$k
+    if (weight === 0) continue
+    if (mon.terms.length === 0) {
+      addTerm('', weight)
+    } else if (mon.terms.length === 1) {
+      addTerm(mon.terms[0], weight)
+    } else {
+      const bounds = mon.terms.map((k) => minMax[k])
+      const monDir = weight >= 0 === (direction === 'upper') ? 'upper' : 'lower'
+      const { w, $c } = linbound(bounds, monDir)
+      addTerm('', weight * $c)
+      for (let i = 0; i < mon.terms.length; i++) {
+        addTerm(mon.terms[i], weight * w[i])
+      }
+    }
+  }
+  return finalizeMonomialMap(acc)
+}
+
+type ExpandDir = 'upper' | 'lower' | 'exact'
+
+function expandPoly(
+  node: PolynomialWithBounds,
+  statMinMax: Record<string, MinMax>,
+  caches: Record<ExpandDir, Map<PolynomialWithBounds, readonly Monomial[]>>
+): SumOfMonomials {
+  function toExpandedPoly(
+    n: PolynomialWithBounds,
+    dir: ExpandDir
+  ): readonly Monomial[] {
+    const cache = caches[dir]
+    const hit = cache.get(n)
+    if (hit) return hit
+
+    let res: Monomial[]
+    switch (n.type) {
+      case 'lin': {
+        const acc = new Map<string, Monomial>()
+        for (const [k, v] of Object.entries(n.lin)) {
+          if (v === 0) continue
+          if (k === '$c') {
+            const ex = acc.get('')
+            if (ex) ex.$k += v
+            else acc.set('', { $k: v, terms: [] })
+          } else {
+            const ex = acc.get(k)
+            if (ex) ex.$k += v
+            else acc.set(k, { $k: v, terms: [k] })
+          }
+        }
+        res = finalizeMonomialMap(acc)
+        break
+      }
+      case 'sum': {
+        const childLists = n.terms.map((t) => toExpandedPoly(t, dir))
+        res = addFoldedLists(childLists, n.$c)
+        break
+      }
+      case 'prod': {
+        if (n.$k === 0) {
+          res = []
+          break
+        }
+        const allFixedSign =
+          dir !== 'exact' && n.terms.every((t) => t.min >= 0 || t.max <= 0)
+
+        if (!allFixedSign) {
+          const factors = n.terms
+            .map((t) => toExpandedPoly(t, 'exact'))
+            .sort((a, b) => a.length - b.length)
+          if (factors.some((f) => f.length === 0)) {
+            res = []
+            break
+          }
+          let cur: readonly Monomial[] = [{ $k: n.$k, terms: [] }]
+          for (const factor of factors) {
+            cur = multiplyFoldedPair(cur, factor)
+            if (cur.length === 0) break
+          }
+          res = cur as Monomial[]
+          break
+        }
+
+        let totalSign = n.$k >= 0 ? 1 : -1
+        const childSigns = n.terms.map((t) => {
+          const s = t.max <= 0 && t.min < 0 ? -1 : 1
+          totalSign *= s
+          return s
+        })
+
+        const nonNegFactors: (readonly Monomial[])[] = []
+        let hasZeroFactor = false
+        for (let i = 0; i < n.terms.length; i++) {
+          const childSign = childSigns[i]
+          const otherSign = totalSign * childSign
+          const childDir: ExpandDir =
+            otherSign > 0 ? dir : dir === 'upper' ? 'lower' : 'upper'
+          const expanded = toExpandedPoly(n.terms[i], childDir)
+          if (expanded.length === 0) {
+            hasZeroFactor = true
+            break
+          }
+          nonNegFactors.push(
+            childSign < 0
+              ? expanded.map((m) => ({ $k: -m.$k, terms: m.terms }))
+              : expanded
+          )
+        }
+
+        if (hasZeroFactor) {
+          res = []
+          break
+        }
+
+        nonNegFactors.sort((a, b) => a.length - b.length)
+        const prodDir: 'upper' | 'lower' =
+          totalSign > 0 === (dir === 'upper') ? 'upper' : 'lower'
+
+        let cur: readonly Monomial[] = [{ $k: Math.abs(n.$k), terms: [] }]
+        for (const factor of nonNegFactors) {
+          if (
+            cur.length * factor.length > COLLAPSE_PRODUCT_LIMIT &&
+            cur.some((m) => m.terms.length > 1)
+          ) {
+            cur = collapseToLinearMonomials(cur, statMinMax, prodDir)
+          }
+          cur = multiplyFoldedPair(cur, factor)
+          if (cur.length === 0) break
+        }
+
+        res =
+          totalSign < 0
+            ? cur.map((m) => ({ $k: -m.$k, terms: [...m.terms] }))
+            : (cur as Monomial[])
+        break
+      }
+    }
+
+    cache.set(n, res)
+    return res
+  }
+
+  return toExpandedPoly(node, 'upper').map((m) => ({
+    $k: m.$k,
+    terms: [...m.terms],
+  }))
 }
 
 class PolyError extends Error {
