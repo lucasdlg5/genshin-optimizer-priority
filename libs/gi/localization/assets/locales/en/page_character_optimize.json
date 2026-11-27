@@ -198,7 +198,14 @@
     "condDesc": "Configure conditional passives for eligible weapons below so their effects are included when calculating the best weapon.",
     "noWeaponConds": "None of the currently eligible weapons have configurable conditionals.",
     "perWeaponTitle": "Best Build per Weapon",
-    "weaponBuildLabel": "Weapon #{{count}}"
+    "weaponBuildLabel": "Weapon #{{count}}",
+    "previewTitle": "Weapon Target Comparison Preview",
+    "baselineCurrent": "Compare vs: Current / Compared Build",
+    "baselineEquippedWeapon": "Compare vs: Best Build on Equipped Weapon",
+    "baselineTop": "Compare vs: Weapon #1 (Top)",
+    "previewTargetLabel": "Selected Target:",
+    "previewBaseLabel": "Reference:",
+    "clickToJump": "Click to jump to this weapon's generated build"
   },
   "kqmsEr": {
     "title": "Minimum ER KQMS",

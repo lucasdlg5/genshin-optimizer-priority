@@ -146,7 +146,14 @@
     "condDesc": "Configure as passivas condicionais das armas elegíveis abaixo para que seus efeitos sejam considerados ao calcular a melhor arma.",
     "noWeaponConds": "Nenhuma das armas elegíveis atualmente possui condicionais configuráveis.",
     "perWeaponTitle": "Melhor Build por Arma",
-    "weaponBuildLabel": "Arma #{{count}}"
+    "weaponBuildLabel": "Arma #{{count}}",
+    "previewTitle": "Prévia Comparativa de Dano por Arma",
+    "baselineCurrent": "Comparar com: Build Atual / Comparação",
+    "baselineEquippedWeapon": "Comparar com: Melhor Build da Arma Equipada",
+    "baselineTop": "Comparar com: Arma #1 (Topo)",
+    "previewTargetLabel": "Alvo Selecionado:",
+    "previewBaseLabel": "Referência:",
+    "clickToJump": "Clique para ir até a Build desta arma"
   },
   "kqmsEr": {
     "title": "Recarga Mínima KQMS",

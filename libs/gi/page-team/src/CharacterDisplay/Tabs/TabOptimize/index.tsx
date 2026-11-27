@@ -126,6 +126,7 @@ import OptimizationTargetSelector from './Components/OptimizationTargetSelector'
 import StatFilterCard from './Components/StatFilterCard'
 import UseEquipped from './Components/UseEquipped'
 import { UseTeammateArt } from './Components/UseTeammateArt'
+import { WeaponBuildsPreviewCard } from './Components/WeaponBuildsPreviewCard'
 import { WeaponFilter } from './Components/WeaponFilter'
 import { calculateTeamKqmsEr } from './kqmsErCalc'
 import ScalesWith from './ScalesWith'
@@ -786,6 +787,25 @@ export default function TabBuild() {
     [t]
   )
 
+  const [highlightedWeaponIdx, setHighlightedWeaponIdx] = useState<
+    number | null
+  >(null)
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  )
+
+  const handleSelectWeaponBuildIndex = useCallback((index: number) => {
+    const el = document.getElementById(`weapon-build-anchor-${index}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setHighlightedWeaponIdx(index)
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current)
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightedWeaponIdx(null)
+      }, 2200)
+    }
+  }, [])
+
   const buildShowingCount =
     builds.length + (graphBuilds ? graphBuilds.length : 0)
 
@@ -1198,6 +1218,14 @@ export default function TabBuild() {
       />
       {weaponBuilds.length > 0 && (
         <>
+          <WeaponBuildsPreviewCard
+            weaponBuilds={weaponBuilds}
+            optimizationTarget={optimizationTarget}
+            compareData={compareData}
+            mainStatAssumptionLevel={mainStatAssumptionLevel}
+            currentWeaponId={currentWeaponId}
+            onSelectWeaponIndex={handleSelectWeaponBuildIndex}
+          />
           <CardThemed bgt="light">
             <CardContent
               sx={{
@@ -1218,6 +1246,8 @@ export default function TabBuild() {
             disabled={!!generatingBuilds}
             getLabel={getWeaponBuildLabel}
             mainStatAssumptionLevel={mainStatAssumptionLevel}
+            itemIdPrefix="weapon-build-anchor"
+            highlightedIndex={highlightedWeaponIdx}
           />
         </>
       )}
@@ -1275,6 +1305,8 @@ const BuildList = memo(function BuildList({
   disabled,
   getLabel,
   mainStatAssumptionLevel,
+  itemIdPrefix,
+  highlightedIndex,
 }: {
   builds: GeneratedBuild[]
   setBuilds?: (builds: GeneratedBuild[] | undefined) => void
@@ -1282,6 +1314,8 @@ const BuildList = memo(function BuildList({
   disabled: boolean
   getLabel: (index: number) => ReactNode
   mainStatAssumptionLevel: number
+  itemIdPrefix?: string
+  highlightedIndex?: number | null
 }) {
   const deleteBuild = useCallback(
     (index: number) => {
@@ -1303,24 +1337,38 @@ const BuildList = memo(function BuildList({
       fallback={<Skeleton variant="rectangular" width="100%" height={600} />}
     >
       {builds?.map((build, index) => (
-        <DataContextWrapper
+        <Box
           key={`${index}-${build.weaponId ?? ''}-${Object.values(
             build.artifactIds
           ).join()}`}
-          characterKey={characterKey}
-          build={build}
-          compareData={compareData}
-          mainStatAssumptionLevel={mainStatAssumptionLevel}
+          id={itemIdPrefix ? `${itemIdPrefix}-${index}` : undefined}
+          sx={{
+            scrollMarginTop: '16px',
+            borderRadius: 1,
+            transition: 'box-shadow 0.3s ease',
+            ...(highlightedIndex === index
+              ? {
+                  boxShadow: (theme) => `0 0 0 2px ${theme.palette.info.main}`,
+                }
+              : {}),
+          }}
         >
-          <BuildItemWrapper
-            index={index}
-            label={getLabel(index)}
+          <DataContextWrapper
+            characterKey={characterKey}
             build={build}
-            disabled={disabled}
-            deleteBuild={setBuilds ? deleteBuild : undefined}
+            compareData={compareData}
             mainStatAssumptionLevel={mainStatAssumptionLevel}
-          />
-        </DataContextWrapper>
+          >
+            <BuildItemWrapper
+              index={index}
+              label={getLabel(index)}
+              build={build}
+              disabled={disabled}
+              deleteBuild={setBuilds ? deleteBuild : undefined}
+              mainStatAssumptionLevel={mainStatAssumptionLevel}
+            />
+          </DataContextWrapper>
+        </Box>
       ))}
     </Suspense>
   )
