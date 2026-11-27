@@ -27,8 +27,10 @@ import {
 } from '@genshin-optimizer/gi/ui'
 import type { CalcResult } from '@genshin-optimizer/gi/uidata'
 import { uiInput as input } from '@genshin-optimizer/gi/wr'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import {
   Box,
+  Button,
   CardActionArea,
   CardContent,
   Grid,
@@ -41,6 +43,7 @@ import type { ReactNode } from 'react'
 import { useCallback, useContext, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BuildTcContext } from '../../BuildTcContext'
+import { enableSingleCharTalentPassivesMax } from '../../TeamSetting/maxTalentCondsUtil'
 
 const talentSpacing = {
   xs: 12,
@@ -50,16 +53,23 @@ const talentSpacing = {
 
 export default function CharacterTalentPane() {
   const { t } = useTranslation('sheet_gen')
+  const { t: tTeam } = useTranslation('page_team')
   // Load tooltip translations
   useTranslation('tooltips_gen')
   const {
     character: { key: characterKey },
   } = useContext(CharacterContext)
+  const { teamId, teamCharId } = useContext(TeamCharacterContext)
   const { gender } = useDBMeta()
   const characterSheet = getCharSheet(characterKey, gender)
   const { data } = useContext(DataContext)
   const { buildTc, setBuildTc } = useContext(BuildTcContext)
   const database = useDatabase()
+
+  const handleEnableCharTalentsMax = useCallback(() => {
+    enableSingleCharTalentPassivesMax(database, teamId, teamCharId, gender)
+  }, [database, teamId, teamCharId, gender])
+
   const skillBurstList = [
     ['auto', t('talents.auto')],
     ['skill', t('talents.skill')],
@@ -115,13 +125,27 @@ export default function CharacterTalentPane() {
           <Box
             sx={{
               display: 'flex',
-              justifyContent: 'flex-end',
+              justifyContent: 'space-between',
+              alignItems: 'center',
               gap: 1,
               flexWrap: 'wrap',
             }}
           >
-            <HitModeToggle size="small" />
-            <ReactionToggle size="small" />
+            <Button
+              size="small"
+              color="success"
+              startIcon={<AutoAwesomeIcon />}
+              onClick={handleEnableCharTalentsMax}
+            >
+              {tTeam(
+                'teamSettings.maxCharTalentsBtn',
+                'Ativar Todas as Passivas e Efeitos no Máximo'
+              )}
+            </Button>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', ml: 'auto' }}>
+              <HitModeToggle size="small" />
+              <ReactionToggle size="small" />
+            </Box>
           </Box>
         </CardContent>
       </CardThemed>

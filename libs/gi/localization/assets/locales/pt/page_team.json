@@ -17,6 +17,8 @@
     "desc": "Descrição do Loadout"
   },
   "teamSettings": {
+    "maxTeamTalentsBtn": "Ativar Todas as Passivas e Efeitos de Talentos no Máximo (Equipe Toda)",
+    "maxCharTalentsBtn": "Ativar Todas as Passivas e Efeitos no Máximo",
     "supportArtBuffs": {
       "title": "Buffs de Artefatos Suporte",
       "noTarget": "Selecione um alvo de otimização na aba Otimizar para comparar os buffs de artefatos suporte.",

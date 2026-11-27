@@ -15,6 +15,7 @@ import {
   TeamInfoAlert,
 } from '@genshin-optimizer/gi/ui'
 import AddIcon from '@mui/icons-material/Add'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CloseIcon from '@mui/icons-material/Close'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import ContentPasteIcon from '@mui/icons-material/ContentPaste'
@@ -29,11 +30,12 @@ import {
   Grid,
   Typography,
 } from '@mui/material'
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useCallback, useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import BuildDropdown from '../BuildDropdown'
 import { LoadoutDropdown } from '../LoadoutDropdown'
+import { enableAllTeamTalentPassivesMax } from './maxTalentCondsUtil'
 import { ResonanceDisplay } from './ResonanceDisplay'
 import { SupportArtifactBuffComparison } from './SupportArtifactBuffComparison'
 import { TeammateDisplay } from './TeamComponents'
@@ -207,6 +209,12 @@ function TeamEditor({
   const charData = firstTeamCharKey && teamData?.[firstTeamCharKey]
   const charUIData = charData ? charData.target : undefined
 
+  const { gender } = useDBMeta()
+  const hasAnyMember = loadoutData.some(Boolean)
+  const handleEnableAllTeamTalentsMax = useCallback(() => {
+    enableAllTeamTalentPassivesMax(database, teamId, gender)
+  }, [database, teamId, gender])
+
   const dataContextValue: dataContextObj | undefined = useMemo(() => {
     if (!teamData || !charUIData) return undefined
     return {
@@ -262,6 +270,19 @@ function TeamEditor({
           character" buffs, and cannot be empty.
         </Trans>
       </Alert>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+        <Button
+          color="success"
+          startIcon={<AutoAwesomeIcon />}
+          disabled={!hasAnyMember}
+          onClick={handleEnableAllTeamTalentsMax}
+        >
+          {t(
+            'teamSettings.maxTeamTalentsBtn',
+            'Ativar Todas as Passivas e Efeitos de Talentos no Máximo (Equipe Toda)'
+          )}
+        </Button>
+      </Box>
       <Grid container sx={{ justifyContent: 'space-between' }} spacing={2}>
         <Grid>
           <Typography variant="h5">{t('teamSettings.title')}</Typography>
