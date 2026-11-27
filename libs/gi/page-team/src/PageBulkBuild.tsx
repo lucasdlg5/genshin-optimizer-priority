@@ -120,6 +120,7 @@ import {
   getFilteredWeapons,
   useTeammateWeaponIds,
 } from './CharacterDisplay/Tabs/TabOptimize/weaponFilterUtil'
+import { enableAllTeamTalentPassivesMax } from './TeamSetting/maxTalentCondsUtil'
 
 type ValueUnit = Parameters<typeof valueString>[1]
 
@@ -415,6 +416,15 @@ export function PageBulkBuild() {
       setQueue(queue.map((item) => ({ ...item, optWeapon: true })))
     }
   }, [database, queue, setQueue])
+
+  const handleEnableMaxTalentsQueue = useCallback(() => {
+    const enabledItems = queue.filter((q) => q.enabled)
+    const targetItems = enabledItems.length ? enabledItems : queue
+    const uniqueTeamIds = Array.from(new Set(targetItems.map((q) => q.teamId)))
+    for (const tId of uniqueTeamIds) {
+      enableAllTeamTalentPassivesMax(database, tId, gender)
+    }
+  }, [queue, database, gender])
 
   const moveItem = useCallback(
     (index: number, delta: -1 | 1) => {
@@ -1072,6 +1082,17 @@ export function PageBulkBuild() {
                 )}
               </Button>
               <Button
+                color="success"
+                startIcon={<AutoAwesome />}
+                disabled={progress.running || !queue.length}
+                onClick={handleEnableMaxTalentsQueue}
+              >
+                {t(
+                  'bulkBuild.maxAllTalentsBtn',
+                  'Ativar Todas as Passivas e Efeitos de Talentos no Máximo (Fila Toda)'
+                )}
+              </Button>
+              <Button
                 color="error"
                 startIcon={<DeleteForever />}
                 disabled={progress.running || !queue.length}
@@ -1465,6 +1486,10 @@ function BulkQueueRowInner({
     onUpdate,
   ])
 
+  const handleMaxTalentsSingle = useCallback(() => {
+    enableAllTeamTalentPassivesMax(database, teamId, gender)
+  }, [database, teamId, gender])
+
   const hasTarget = Boolean(optConfig.optimizationTarget?.length)
 
   if (!characterContextValue || !dataContextValue) {
@@ -1607,6 +1632,19 @@ function BulkQueueRowInner({
                         {t(
                           'bulkBuild.maxWeaponsSingleBtn',
                           'Ativar Todas Armas & Efeitos Máx. (Sem Repetir)'
+                        )}
+                      </Button>
+
+                      <Button
+                        size="small"
+                        color="success"
+                        startIcon={<AutoAwesome />}
+                        disabled={disabled}
+                        onClick={handleMaxTalentsSingle}
+                      >
+                        {t(
+                          'bulkBuild.maxTalentsSingleBtn',
+                          'Ativar Passivas & Talentos Máx.'
                         )}
                       </Button>
 
