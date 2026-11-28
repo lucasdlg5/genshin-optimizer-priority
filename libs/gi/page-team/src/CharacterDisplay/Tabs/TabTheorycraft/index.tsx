@@ -8,6 +8,7 @@ import {
   useDBMeta,
   useOptConfig,
 } from '@genshin-optimizer/gi/db-ui'
+import { getGpuAccelerationEnabled } from '@genshin-optimizer/gi/solver/gpu'
 import type { TCWorkerResult } from '@genshin-optimizer/gi/solver-tc'
 import {
   getMinSubAndOtherRolls,
@@ -141,7 +142,12 @@ export default function TabTheorycraft() {
       statFilters
     )
     if (!nodes || !valueFilter) return
-    workerRef.current.postMessage({ buildTc, nodes, valueFilter })
+    workerRef.current.postMessage({
+      buildTc,
+      nodes,
+      valueFilter,
+      useGpu: getGpuAccelerationEnabled(),
+    })
     setNoDistributionFound(false)
     setStatus((s) => ({
       ...s,

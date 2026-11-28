@@ -237,6 +237,15 @@ function seedInitialThreshold(
   return Math.max(currentThreshold, safeSeed)
 }
 
+import {
+  getGpuAccelerationEnabled,
+  getSolverGpuContext,
+  isWebGPUSupported,
+  solveWithWebGPU,
+} from './gpu/index.js'
+
+const MIN_BUILDS_FOR_GPU = 2_000_000
+
 export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
   private maxIterateSize: number
   private status: Record<
@@ -252,6 +261,9 @@ export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
   private topN: number
   private initialThreshold: number
   private isTrivialEmpty: boolean
+  private preferGpu: boolean
+  private deferredSetup: Setup | undefined
+  private cancelReason: unknown = undefined
   private buildValues: { w: Worker; val: number }[]
   private finalizedResults: FinalizeResult[] = []
 
@@ -278,7 +290,9 @@ export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
           break
       }
     })
-    // Balanced chunk size for 32-way BNB splitting: parallelizes across all threads without adding an extra 32x split depth
+    this.cancelled.catch((err) => {
+      this.cancelReason = err ?? new Error('Cancelled')
+    })
     this.maxIterateSize = Math.max(
       4_000_000,
       Math.min(16_000_000, Math.floor(32_000_000 / Math.max(1, workers.length)))
@@ -293,14 +307,26 @@ export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
 
     const setup = this.preprocess(problem)
     this.initialThreshold = setup.initialThreshold ?? Number.NEGATIVE_INFINITY
-    this.isTrivialEmpty = countBuilds(setup.arts) === 0
+    const remainingAfterPre = countBuilds(setup.arts)
+    this.isTrivialEmpty = remainingAfterPre === 0
     this.buildValues = Array.from({ length: topN }, () => ({
       w: undefined as any,
       val: this.initialThreshold,
     }))
 
+    const wantGpu = problem.useGpu ?? getGpuAccelerationEnabled()
+    this.preferGpu =
+      !this.isTrivialEmpty &&
+      wantGpu &&
+      isWebGPUSupported() &&
+      (Boolean(setup.plotBase) || remainingAfterPre >= MIN_BUILDS_FOR_GPU)
+
     if (!this.isTrivialEmpty) {
-      this.notifiedBroadcast(setup)
+      if (this.preferGpu) {
+        this.deferredSetup = setup
+      } else {
+        this.notifiedBroadcast(setup)
+      }
     }
   }
 
@@ -318,9 +344,38 @@ export class GOSolver extends WorkerCoordinator<WorkerCommand, WorkerResult> {
     const { exclusion, maxIterateSize } = this
     this.finalizedResults = []
 
-    // Cleanup function from the BPS tracker
     const stopTracking = this.trackBuildsPerSecond()
     try {
+      if (this.preferGpu && this.deferredSetup) {
+        const setup = this.deferredSetup
+        const gpuCtx = await getSolverGpuContext()
+        if (this.cancelReason) throw this.cancelReason
+        if (gpuCtx) {
+          try {
+            const gpuResults = await Promise.race([
+              solveWithWebGPU(gpuCtx, setup, exclusion, this.status, () => {
+                if (this.cancelReason) throw this.cancelReason
+              }),
+              this.cancelled,
+            ])
+            this.deferredSetup = undefined
+            this.buildValues = []
+            return gpuResults
+          } catch (err) {
+            if (this.cancelReason || err === this.cancelReason) {
+              throw err
+            }
+            // Reset partial counters and fall back transparently to CPU workers
+            this.status.tested = 0
+            this.status.failed = 0
+            this.status.skipped = 0
+            this.status.total = Number.NaN
+          }
+        }
+        this.notifiedBroadcast(setup)
+        this.deferredSetup = undefined
+      }
+
       await this.execute([{ command: 'count', exclusion, maxIterateSize }])
       this.notifiedBroadcast({ command: 'finalize' })
       await this.execute([])

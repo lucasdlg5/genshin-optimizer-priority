@@ -51,8 +51,12 @@ import {
   computeNodeRange,
   createSolverWorkers,
   GOSolver,
+  getGpuAccelerationEnabled,
+  isWebGPUSupported,
   mergeBuilds,
   mergePlot,
+  setGpuAccelerationEnabled,
+  subscribeGpuAcceleration,
   terminateSolverWorkers,
 } from '@genshin-optimizer/gi/solver'
 import { compactArtifacts } from '@genshin-optimizer/gi/solver-tc'
@@ -82,6 +86,7 @@ import {
   CheckBoxOutlineBlank,
   Close,
   DeleteForever,
+  Memory as MemoryIcon,
   Science,
   TrendingUp,
 } from '@mui/icons-material'
@@ -115,6 +120,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import useCompareData from '../../../useCompareData'
@@ -221,6 +227,11 @@ export default function TabBuild() {
   const deferredBuildSetting = useDeferredValue(buildSetting)
   const teammateArtifactIds = useTeammateArtifactIds()
   const teammateWeaponIds = useTeammateWeaponIds()
+  const gpuSupported = isWebGPUSupported()
+  const gpuAccelEnabled = useSyncExternalStore(
+    subscribeGpuAcceleration,
+    getGpuAccelerationEnabled
+  )
   const allArts = useDataManagerValues(database.arts)
   const allWeapons = useDataManagerValues(database.weapons)
   const currentWeaponId = database.teams.getLoadoutWeapon(loadoutDatum)?.id
@@ -608,6 +619,7 @@ export default function TabBuild() {
 
           topN: effectiveTopN,
           plotBase: plotBaseNode,
+          useGpu: gpuAccelEnabled,
         }
 
         activeWeaponStatus = {
@@ -786,6 +798,7 @@ export default function TabBuild() {
     optConfigId,
     t,
     throwGlobalError,
+    gpuAccelEnabled,
   ])
 
   const characterName = (
@@ -1080,6 +1093,28 @@ export default function TabBuild() {
               </MenuItem>
             ))}
         </DropdownButton>
+        <BootstrapTooltip
+          placement="top"
+          title={
+            gpuSupported
+              ? gpuAccelEnabled
+                ? 'Aceleração por GPU (WebGPU) ATIVA — usa Compute Shaders WGSL com validação exata f64 e fallback automático para CPU. Clique para alternar.'
+                : 'Aceleração por GPU (WebGPU) DESATIVADA — usando apenas CPU Threads. Clique para ativar.'
+              : 'WebGPU indisponível neste navegador/dispositivo — usando CPU Threads.'
+          }
+        >
+          <span>
+            <Button
+              sx={{ borderRadius: 0 }}
+              color={gpuAccelEnabled ? 'info' : 'secondary'}
+              disabled={!gpuSupported || generatingBuilds}
+              startIcon={<MemoryIcon />}
+              onClick={() => setGpuAccelerationEnabled(!gpuAccelEnabled)}
+            >
+              {gpuAccelEnabled ? 'GPU: ON' : 'GPU: OFF'}
+            </Button>
+          </span>
+        </BootstrapTooltip>
         <BootstrapTooltip placement="top" title={t('notifyTooltip')}>
           <Box>
             <Button

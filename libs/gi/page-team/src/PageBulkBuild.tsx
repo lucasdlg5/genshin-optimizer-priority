@@ -4,6 +4,7 @@ import {
 } from '@genshin-optimizer/common/database-ui'
 import { useBoolState } from '@genshin-optimizer/common/react-util'
 import {
+  BootstrapTooltip,
   CardThemed,
   DropdownButton,
   InfoTooltip,
@@ -47,7 +48,11 @@ import type { OptProblemInput, SolverBuild } from '@genshin-optimizer/gi/solver'
 import {
   createSolverWorkers,
   GOSolver,
+  getGpuAccelerationEnabled,
+  isWebGPUSupported,
   mergeBuilds,
+  setGpuAccelerationEnabled,
+  subscribeGpuAcceleration,
   terminateSolverWorkers,
 } from '@genshin-optimizer/gi/solver'
 import { compactArtifacts } from '@genshin-optimizer/gi/solver-tc'
@@ -89,6 +94,7 @@ import {
   DeleteForever,
   Filter4,
   GroupAdd,
+  Memory as MemoryIcon,
   PlayArrow,
 } from '@mui/icons-material'
 import {
@@ -751,6 +757,11 @@ export function PageBulkBuild() {
   const [showMultiAddModal, onOpenMultiAdd, onCloseMultiAdd] =
     useBoolState(false)
   const [maxWorkers, nativeThreads, setMaxWorkers] = useNumWorkers()
+  const gpuSupported = isWebGPUSupported()
+  const gpuAccelEnabled = useSyncExternalStore(
+    subscribeGpuAcceleration,
+    getGpuAccelerationEnabled
+  )
 
   const [progressStore] = useState(createBulkProgressStore)
   const [isRunning, setIsRunning] = useState(false)
@@ -1413,6 +1424,31 @@ export function PageBulkBuild() {
               </Button>
 
               <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
+                <BootstrapTooltip
+                  placement="top"
+                  title={
+                    gpuSupported
+                      ? gpuAccelEnabled
+                        ? 'Aceleração por GPU (WebGPU) ATIVA — usa Compute Shaders WGSL com validação exata f64 e fallback automático para CPU. Clique para alternar.'
+                        : 'Aceleração por GPU (WebGPU) DESATIVADA — usando apenas CPU Threads. Clique para ativar.'
+                      : 'WebGPU indisponível neste navegador/dispositivo — usando CPU Threads.'
+                  }
+                >
+                  <span>
+                    <Button
+                      color={gpuAccelEnabled ? 'info' : 'secondary'}
+                      variant="outlined"
+                      disabled={!gpuSupported || isRunning}
+                      startIcon={<MemoryIcon />}
+                      onClick={() =>
+                        setGpuAccelerationEnabled(!gpuAccelEnabled)
+                      }
+                    >
+                      {gpuAccelEnabled ? 'GPU: ON' : 'GPU: OFF'}
+                    </Button>
+                  </span>
+                </BootstrapTooltip>
+
                 <DropdownButton
                   disabled={isRunning}
                   title={`${maxWorkers} Threads`}
@@ -1443,6 +1479,7 @@ export function PageBulkBuild() {
             <BulkTopProgressBanner
               progressStore={progressStore}
               gender={gender}
+              gpuActive={gpuAccelEnabled}
             />
           </Stack>
         </CardContent>
@@ -1510,9 +1547,11 @@ export function PageBulkBuild() {
 const BulkTopProgressBanner = memo(function BulkTopProgressBanner({
   progressStore,
   gender,
+  gpuActive,
 }: {
   progressStore: BulkProgressStore
   gender: GenderType
+  gpuActive: boolean
 }) {
   const { t } = useTranslation('page_character_optimize')
   const progress = useSyncExternalStore(
@@ -1557,6 +1596,9 @@ const BulkTopProgressBanner = memo(function BulkTopProgressBanner({
             )}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <SqBadge color={gpuActive ? 'info' : 'secondary'}>
+              {gpuActive ? 'WebGPU + CPU' : 'CPU'}
+            </SqBadge>
             {progress.weaponTotal > 0 && (
               <Typography
                 variant="caption"

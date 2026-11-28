@@ -16,6 +16,7 @@ export type OptProblemInput = {
   topN: number
   plotBase?: OptNode
   initialThreshold?: number
+  useGpu?: boolean
 }
 
 export type WorkerCommand =

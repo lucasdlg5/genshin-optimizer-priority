@@ -142,6 +142,9 @@
         "./libs/gi/silly-wisher-names/src/index.ts"
       ],
       "@genshin-optimizer/gi/solver": ["./libs/gi/solver/src/index.ts"],
+      "@genshin-optimizer/gi/solver/gpu": [
+        "./libs/gi/solver/src/GOSolver/gpu/index.ts"
+      ],
       "@genshin-optimizer/gi/solver-tc": ["./libs/gi/solver-tc/src/index.ts"],
       "@genshin-optimizer/gi/stats": ["./libs/gi/stats/src/index.ts"],
       "@genshin-optimizer/gi/svgicons": ["./libs/gi/svgicons/src/index.ts"],
