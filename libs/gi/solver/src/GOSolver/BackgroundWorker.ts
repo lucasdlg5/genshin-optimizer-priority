@@ -33,6 +33,27 @@ function getOrCreateSplitWorker(): SplitWorker {
   return splitWorker
 }
 
+let pendingYieldResolve: (() => void) | undefined
+const yieldChannel =
+  typeof MessageChannel !== 'undefined' ? new MessageChannel() : undefined
+if (yieldChannel) {
+  yieldChannel.port1.onmessage = () => {
+    const r = pendingYieldResolve
+    pendingYieldResolve = undefined
+    r?.()
+  }
+}
+
+function yieldToEventLoop(): Promise<void> {
+  if (yieldChannel && !pendingYieldResolve) {
+    return new Promise((resolve) => {
+      pendingYieldResolve = resolve
+      yieldChannel.port2.postMessage(null)
+    })
+  }
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 async function handleEvent(e: MessageEvent<WorkerCommand>): Promise<void> {
   const { data } = e,
     { command } = data
@@ -41,13 +62,9 @@ async function handleEvent(e: MessageEvent<WorkerCommand>): Promise<void> {
       const sw = getOrCreateSplitWorker()
       for (const filter of sw.split(data.filter, data.maxIterateSize)) {
         postMessage({ command: 'iterate', filter })
-        // Suspend here in case a `threshold` is sent over
-        //
-        // Make sure to use task-based mechanisms such as `setTimeout` so that
-        // this function suspends until the next event loop. If we instead use
-        // microtask-based ones such as `Promise.resolved`, the suspension will
-        // not be long enough.
-        await new Promise((r) => setTimeout(r))
+        // Yield via MessageChannel macrotask (avoiding 4ms HTML5 setTimeout clamping)
+        // so incoming `threshold` messages are processed immediately.
+        await yieldToEventLoop()
       }
       break
     }

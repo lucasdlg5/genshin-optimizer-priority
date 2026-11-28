@@ -550,6 +550,7 @@ async function executeSingleCharacterQueueItem({
   let bestOverall: (SolverBuild & { weaponId: string }) | undefined
   let targetInfoUnit: ValueUnit = ''
   let targetInfoFixed: number | undefined
+  let lastWeaponYield = performance.now()
 
   for (let wIdx = 0; wIdx < candidateWeapons.length; wIdx++) {
     if (getIsCancelled()) throw cancellationError
@@ -633,8 +634,11 @@ async function executeSingleCharacterQueueItem({
       setActiveSolver(undefined)
     }
 
-    // Yield between weapon passes so V8 GC reclaims AST & solver buffers immediately
-    await yieldToEventLoop(0)
+    // Frame-paced yield keeps UI at 60 FPS and lets V8 GC reclaim temporary ASTs without 4ms timer stalls on fast-pruned weapons
+    if (performance.now() - lastWeaponYield >= 16) {
+      await yieldToEventLoop(0)
+      lastWeaponYield = performance.now()
+    }
   }
 
   if (!bestOverall) {

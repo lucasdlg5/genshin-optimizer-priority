@@ -47,6 +47,8 @@ import {
 } from '@genshin-optimizer/gi/db-ui'
 import type { OptProblemInput, SolverBuild } from '@genshin-optimizer/gi/solver'
 import {
+  computeFullArtRange,
+  computeNodeRange,
   createSolverWorkers,
   GOSolver,
   mergeBuilds,
@@ -466,6 +468,11 @@ export default function TabBuild() {
       let targetNodeForPlot: NumNode | undefined
       let plotBaseNumNodeForPlot: NumNode | undefined
       let hasAnyResults = false
+      let lastFrameYield = performance.now()
+      const fullSplitRange =
+        optWeapon && weaponsToOptimize.length > 1
+          ? computeFullArtRange(split)
+          : undefined
 
       for (let wIdx = 0; wIdx < weaponsToOptimize.length; wIdx++) {
         if (isCancelled) throw cancellationError
@@ -575,13 +582,31 @@ export default function TabBuild() {
         const plotBaseNode = plotBaseNumNode ? nodes.pop() : undefined
         const optimizationTargetNode = nodes.pop()!
 
+        let effectiveTopN = maxBuildsToShow
+        if (
+          optWeapon &&
+          !plotBaseNode &&
+          maxBuildsToShow > 1 &&
+          fullSplitRange &&
+          allWeaponBuilds.length >= maxBuildsToShow
+        ) {
+          const nthOverall = allWeaponBuilds[maxBuildsToShow - 1].value
+          const ub =
+            computeNodeRange([optimizationTargetNode], fullSplitRange).get(
+              optimizationTargetNode
+            )?.max ?? Number.POSITIVE_INFINITY
+          if (ub < nthOverall) {
+            effectiveTopN = 1
+          }
+        }
+
         const problem: OptProblemInput = {
           arts: split,
           optimizationTarget: optimizationTargetNode,
           exclusion: artSetExclusion,
           constraints: nodes.map((value, i) => ({ value, min: minimum[i] })),
 
-          topN: maxBuildsToShow,
+          topN: effectiveTopN,
           plotBase: plotBaseNode,
         }
 
@@ -655,7 +680,10 @@ export default function TabBuild() {
         if (allWeaponBuilds.length > maxBuildsToShow)
           allWeaponBuilds.length = maxBuildsToShow
 
-        await new Promise((resolve) => setTimeout(resolve, 0))
+        if (performance.now() - lastFrameYield >= 16) {
+          await new Promise((resolve) => setTimeout(resolve, 0))
+          lastFrameYield = performance.now()
+        }
       }
 
       bestBuildPerWeapon.sort((a, b) => b.value - a.value)

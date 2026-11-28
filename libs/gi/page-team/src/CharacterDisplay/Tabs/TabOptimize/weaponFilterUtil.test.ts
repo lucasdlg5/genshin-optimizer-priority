@@ -184,4 +184,42 @@ describe('weaponFilterUtil', () => {
       'w_four_star',
     ])
   })
+
+  it('places Lv.1 1-star placeholder currentWeaponId after invested 5-star and 4-star weapons for strong BNB warm-start', () => {
+    const list: ICachedWeapon[] = [
+      makeWeapon({
+        id: 'w_dull_current',
+        key: 'DullBlade',
+        level: 1,
+        ascension: 0,
+        location: 'KamisatoAyaka',
+      }),
+      makeWeapon({
+        id: 'w_black_90',
+        key: 'TheBlackSword',
+        level: 90,
+        refinement: 5,
+        location: '',
+      }),
+      makeWeapon({
+        id: 'w_mist_90',
+        key: 'MistsplitterReforged',
+        level: 90,
+        ascension: 6,
+        location: '',
+      }),
+    ]
+
+    const result = deduplicateAndSortWeapons(
+      list,
+      'KamisatoAyaka',
+      'w_dull_current'
+    )
+
+    expect(result.map((w) => w.id)).toEqual([
+      'w_mist_90',
+      'w_black_90',
+      'w_dull_current',
+    ])
+  })
 })

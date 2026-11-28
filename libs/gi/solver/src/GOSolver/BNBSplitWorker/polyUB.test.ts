@@ -588,12 +588,6 @@ describe('polyUB', () => {
       })
     })
     test('large post-product zero crossing', () => {
-      // Boundable, but not currently handled
-      const n = prod(
-        -1,
-        sum(min(0.1, customRead(['dyn', '0'])), -0.2),
-        sum(min(0.1, customRead(['dyn', '1'])), -0.2)
-      )
       const fakeArts = toFakeArts(
         [0, 0],
         [1, 1],
@@ -605,7 +599,31 @@ describe('polyUB', () => {
         [2, 0]
       )
 
-      expect(() => polyUB([n], fakeArts)).toThrow()
+      // Tightened minimax `min` bound handles `-0.2` without crossing zero
+      const handled = prod(
+        -1,
+        sum(min(0.1, customRead(['dyn', '0'])), -0.2),
+        sum(min(0.1, customRead(['dyn', '1'])), -0.2)
+      )
+      const p = polyUB([handled], fakeArts)
+      const l = linearUB([handled], fakeArts)
+      const compute = precompute([handled], {}, (f) => f.path[1], 1)
+      fakeArts.values.circlet.forEach((art) => {
+        expect(evalPoly(p, art.values)[0]).toBeGreaterThanOrEqual(
+          compute([art] as const)[0] - prettyMuchZero
+        )
+        expect(evalLinear(l, art.values)[0]).toBeGreaterThanOrEqual(
+          compute([art] as const)[0] - prettyMuchZero
+        )
+      })
+
+      // Larger post-approximation crossing beyond `-max` still throws PolyError
+      const unhandled = prod(
+        -1,
+        sum(min(0.1, customRead(['dyn', '0'])), -0.12),
+        sum(min(0.1, customRead(['dyn', '1'])), -0.12)
+      )
+      expect(() => polyUB([unhandled], fakeArts)).toThrow()
     })
     test('many set thresholds in shared DAG product avoids exponential blowup', () => {
       const setThresholds = Array.from({ length: 24 }, (_, idx) =>

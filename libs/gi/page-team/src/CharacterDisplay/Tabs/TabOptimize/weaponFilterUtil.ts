@@ -119,9 +119,16 @@ export function deduplicateAndSortWeapons(
   }
 
   return Array.from(bySignature.values()).sort((a, b) => {
-    // Evaluate the currently equipped weapon first to warm up BNB threshold
-    if (a.id === currentWeaponId) return -1
-    if (b.id === currentWeaponId) return 1
+    // Only evaluate currentWeaponId first if it is an invested >=4★ weapon; never put a Lv.1 1★ placeholder ahead of 5★ weapons
+    const aStrongCurrent =
+      a.id === currentWeaponId &&
+      getWeaponStat(a.key).rarity >= 4 &&
+      a.level >= 70
+    const bStrongCurrent =
+      b.id === currentWeaponId &&
+      getWeaponStat(b.key).rarity >= 4 &&
+      b.level >= 70
+    if (aStrongCurrent !== bStrongCurrent) return aStrongCurrent ? -1 : 1
 
     const rarityDiff = getWeaponStat(b.key).rarity - getWeaponStat(a.key).rarity
     if (rarityDiff !== 0) return rarityDiff

@@ -24,6 +24,7 @@ import {
   mapFormulas,
   max,
   min,
+  precompute,
   sum,
   threshold,
 } from '@genshin-optimizer/gi/wr/opt'
@@ -215,39 +216,82 @@ function reaffine(
     (f) => f
   )
 
-  function reaffineArt(stat: DynStat): DynStat {
-    const values = constantFold(
-      [...affineMap.keys()],
-      {
-        dyn: objMap(stat, (value) => constant(value)),
-      } as any,
-      (_) => true
-    )
-    return Object.fromEntries(
-      [...affineMap.values()].map((v, i) => [
-        v.path[1],
-        (values[i] as ConstantNode<number>).value,
-      ])
-    )
+  const affineNodesList = [...affineMap.keys()]
+  const targetKeys = [...affineMap.values()].map((v) => v.path[1])
+  let hasNonFiniteConst = false
+  forEachNodes(
+    affineNodesList,
+    (f) => {
+      if (f.operation === 'const' && !Number.isFinite(f.value)) {
+        hasNonFiniteConst = true
+      }
+    },
+    () => {}
+  )
+
+  if (hasNonFiniteConst) {
+    function reaffineArtFallback(stat: DynStat): DynStat {
+      const values = constantFold(
+        affineNodesList,
+        {
+          dyn: objMap(stat, (value) => constant(value)),
+        } as any,
+        (_) => true
+      )
+      return Object.fromEntries(
+        targetKeys.map((k, i) => [k, (values[i] as ConstantNode<number>).value])
+      )
+    }
+    const result = {
+      nodes,
+      arts: {
+        base: reaffineArtFallback(arts.base),
+        values: objKeyMap(allArtifactSlotKeys, (slot) =>
+          arts.values[slot].map(({ id, set, values }) => ({
+            id,
+            set,
+            values: reaffineArtFallback(values),
+          }))
+        ),
+      },
+    }
+    const offsets = Object.entries(reaffineArtFallback({}))
+    for (const slotArts of Object.values(result.arts.values))
+      for (const { values } of slotArts)
+        for (const [key, baseValue] of offsets) values[key] -= baseValue
+    return result
   }
-  const result = {
+
+  const evalAffine = precompute(affineNodesList, {}, (f) => f.path[1], 1)
+  const zeroOffsets = evalAffine([{ values: {} }])
+  const numTargets = targetKeys.length
+
+  const baseEval = evalAffine([{ values: arts.base }])
+  const newBase: DynStat = {}
+  for (let i = 0; i < numTargets; i++) {
+    newBase[targetKeys[i]] = baseEval[i]
+  }
+
+  const singleSlotArg = [{ values: {} as DynStat }] as const
+  const newValues = objKeyMap(allArtifactSlotKeys, (slot) =>
+    arts.values[slot].map(({ id, set, values }) => {
+      ;(singleSlotArg as unknown as [{ values: DynStat }])[0].values = values
+      const evaluated = evalAffine(singleSlotArg)
+      const out: DynStat = {}
+      for (let i = 0; i < numTargets; i++) {
+        out[targetKeys[i]] = evaluated[i] - zeroOffsets[i]
+      }
+      return { id, set, values: out }
+    })
+  )
+
+  return {
     nodes,
     arts: {
-      base: reaffineArt(arts.base),
-      values: objKeyMap(allArtifactSlotKeys, (slot) =>
-        arts.values[slot].map(({ id, set, values }) => ({
-          id,
-          set,
-          values: reaffineArt(values),
-        }))
-      ),
+      base: newBase,
+      values: newValues,
     },
   }
-  const offsets = Object.entries(reaffineArt({}))
-  for (const arts of Object.values(result.arts.values))
-    for (const { values } of arts)
-      for (const [key, baseValue] of offsets) values[key] -= baseValue
-  return result
 }
 /** Remove artifacts that cannot be in top `numTop` builds */
 function pruneOrder(
@@ -264,7 +308,8 @@ function pruneOrder(
    * as set effects are not handled here.
    */
   const allowRainbow = !exclusion.rainbow?.length,
-    keys = Object.keys(arts.base)
+    keys = Object.keys(arts.base),
+    numKeys = keys.length
   const noSwitchIn = new Set(
     Object.entries(exclusion)
       .filter(([_, v]) => v.length)
@@ -277,70 +322,525 @@ function pruneOrder(
   )
   const values = objKeyMap(allArtifactSlotKeys, (slot) => {
     const list = arts.values[slot]
-    const newList = list.filter((art) => {
-      let count = 0
-      return list.every((other) => {
-        const otherBetterEqual = keys.every(
-          (k) => (other.values[k] ?? 0) >= (art.values[k] ?? 0)
-        )
-        const otherMaybeBetter = keys.some(
-          (k) => (other.values[k] ?? 0) > (art.values[k] ?? 0)
-        )
-        const otherBetter =
-          otherBetterEqual && (otherMaybeBetter || other.id > art.id)
+    const n = list.length
+    if (n <= numTop) return list
+
+    // Pack stat values into a flat contiguous Float64Array for fast cache-local dominance checks
+    const matrix = new Float64Array(n * numKeys)
+    const canSwitchInArr = new Uint8Array(n)
+    const canSwitchOutArr = new Uint8Array(n)
+    for (let i = 0; i < n; i++) {
+      const art = list[i]
+      const baseOff = i * numKeys
+      for (let k = 0; k < numKeys; k++) {
+        matrix[baseOff + k] = art.values[keys[k]] ?? 0
+      }
+      canSwitchInArr[i] = allowRainbow && !noSwitchIn.has(art.set!) ? 1 : 0
+      canSwitchOutArr[i] = allowRainbow && !noSwitchOut.has(art.set!) ? 1 : 0
+    }
+
+    const newList: ArtifactBuildData[] = []
+    for (let i = 0; i < n; i++) {
+      const art = list[i]
+      const artOff = i * numKeys
+      const artSwitchOut = canSwitchOutArr[i]
+      let dominatedCount = 0
+      let keep = true
+
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue
+        const other = list[j]
         const canSwitch =
-          (allowRainbow &&
-            !noSwitchIn.has(other.set!) &&
-            !noSwitchOut.has(art.set!)) ||
-          art.set === other.set
-        if (otherBetter && canSwitch) count++
-        return count < numTop
-      })
-    })
-    if (newList.length !== list.length) progress = true
+          (artSwitchOut && canSwitchInArr[j]) || art.set === other.set
+        if (!canSwitch) continue
+
+        const otherOff = j * numKeys
+        let betterEqual = true
+        let strictlyBetter = false
+        for (let k = 0; k < numKeys; k++) {
+          const ov = matrix[otherOff + k]
+          const av = matrix[artOff + k]
+          if (ov < av) {
+            betterEqual = false
+            break
+          }
+          if (ov > av) strictlyBetter = true
+        }
+        if (betterEqual && (strictlyBetter || other.id > art.id)) {
+          dominatedCount++
+          if (dominatedCount >= numTop) {
+            keep = false
+            break
+          }
+        }
+      }
+
+      if (keep) newList.push(art)
+    }
+
+    if (newList.length !== n) progress = true
     return newList
   })
   return progress ? { base: arts.base, values } : arts
 }
+function evalResScalar(r: number): number {
+  if (r < 0) return 1 - r / 2
+  if (r >= 0.75) return 1 / (r * 4 + 1)
+  return 1 - r
+}
+
 /** Remove artifacts that cannot reach `minimum` in any build */
 function pruneArtRange(
   nodes: OptNode[],
   arts: ArtifactsBySlot,
   minimum: number[]
 ): ArtifactsBySlot {
-  const baseRange = Object.fromEntries(
-    Object.entries(arts.base).map(([key, x]) => [key, { min: x, max: x }])
+  let hasPotentialZeroDiv = false
+  forEachNodes(
+    nodes,
+    (f) => {
+      if (f.operation === 'sum_frac') {
+        const denom = f.operands[1]
+        if (denom.operation !== 'const' || denom.value <= 0) {
+          hasPotentialZeroDiv = true
+        }
+      }
+    },
+    () => {}
   )
-  const wrap = { arts }
+
+  const activeNodes: OptNode[] = []
+  const activeMins: number[] = []
+  for (let i = 0; i < nodes.length; i++) {
+    const m = minimum[i] ?? Number.NEGATIVE_INFINITY
+    if (hasPotentialZeroDiv || m > Number.NEGATIVE_INFINITY) {
+      activeNodes.push(nodes[i])
+      activeMins.push(m)
+    }
+  }
+  if (activeNodes.length === 0) return arts
+
+  for (let s = 0; s < 5; s++) {
+    if (arts.values[allArtifactSlotKeys[s]].length === 0) {
+      return {
+        base: arts.base,
+        values: {
+          flower: [],
+          plume: [],
+          sands: [],
+          goblet: [],
+          circlet: [],
+        },
+      }
+    }
+  }
+
+  // Index ONLY `dyn` keys actually read by `activeNodes`
+  const keyToIdx = new Map<string, number>()
+  const keys: string[] = []
+  const ensureKey = (k: string): number => {
+    let idx = keyToIdx.get(k)
+    if (idx === undefined) {
+      idx = keys.length
+      keyToIdx.set(k, idx)
+      keys.push(k)
+    }
+    return idx
+  }
+
+  // Flatten `activeNodes` into post-order integer bytecode
+  const topo: OptNode[] = []
+  const nodeToIdx = new Map<OptNode, number>()
+  forEachNodes(
+    activeNodes,
+    () => {},
+    (f) => {
+      if (f.operation === 'read') {
+        if (f.path[0] !== 'dyn')
+          throw new Error(`Found non-dyn path ${f.path} while computing range`)
+        ensureKey(f.path[1])
+      }
+      nodeToIdx.set(f, topo.length)
+      topo.push(f)
+    }
+  )
+
+  const K = keys.length
+  const M = topo.length
+  const opCodes = new Uint8Array(M)
+  const opAux = new Int32Array(M)
+  const opLen = new Int32Array(M)
+  const constVals = new Float64Array(M)
+  const flatOperandsList: number[] = []
+
+  // OpCodes: 0=read, 1=const, 2=add, 3=min, 4=max, 5=res, 6=mul, 7=threshold, 8=sum_frac
+  for (let i = 0; i < M; i++) {
+    const f = topo[i]
+    switch (f.operation) {
+      case 'read':
+        opCodes[i] = 0
+        opAux[i] = keyToIdx.get(f.path[1])!
+        break
+      case 'const':
+        opCodes[i] = 1
+        constVals[i] = f.value
+        break
+      case 'add':
+      case 'min':
+      case 'max':
+      case 'res':
+      case 'mul':
+      case 'threshold':
+      case 'sum_frac': {
+        opCodes[i] =
+          f.operation === 'add'
+            ? 2
+            : f.operation === 'min'
+              ? 3
+              : f.operation === 'max'
+                ? 4
+                : f.operation === 'res'
+                  ? 5
+                  : f.operation === 'mul'
+                    ? 6
+                    : f.operation === 'threshold'
+                      ? 7
+                      : 8
+        opAux[i] = flatOperandsList.length
+        opLen[i] = f.operands.length
+        for (let j = 0; j < f.operands.length; j++) {
+          flatOperandsList.push(nodeToIdx.get(f.operands[j])!)
+        }
+        break
+      }
+      default:
+        assertUnreachable(f.operation)
+    }
+  }
+  const flatOps = Int32Array.from(flatOperandsList)
+  const rootIndices = Int32Array.from(activeNodes.map((n) => nodeToIdx.get(n)!))
+  const rootMins = Float64Array.from(activeMins)
+  const numRoots = rootIndices.length
+
+  const nMin = new Float64Array(M)
+  const nMax = new Float64Array(M)
+
+  const checkBoxFeasible = (
+    kMin: Float64Array,
+    kMax: Float64Array
+  ): boolean => {
+    for (let i = 0; i < M; i++) {
+      switch (opCodes[i]) {
+        case 0: {
+          const rk = opAux[i]
+          nMin[i] = kMin[rk]
+          nMax[i] = kMax[rk]
+          break
+        }
+        case 1: {
+          const cv = constVals[i]
+          nMin[i] = cv
+          nMax[i] = cv
+          break
+        }
+        case 2: {
+          const start = opAux[i]
+          const end = start + opLen[i]
+          let mn = 0
+          let mx = 0
+          for (let j = start; j < end; j++) {
+            const o = flatOps[j]
+            mn += nMin[o]
+            mx += nMax[o]
+          }
+          nMin[i] = mn
+          nMax[i] = mx
+          break
+        }
+        case 3: {
+          const start = opAux[i]
+          const end = start + opLen[i]
+          let mn = Number.POSITIVE_INFINITY
+          let mx = Number.POSITIVE_INFINITY
+          for (let j = start; j < end; j++) {
+            const o = flatOps[j]
+            const omn = nMin[o]
+            const omx = nMax[o]
+            mn = omn < mn || Number.isNaN(omn) ? omn : mn
+            mx = omx < mx || Number.isNaN(omx) ? omx : mx
+          }
+          nMin[i] = mn
+          nMax[i] = mx
+          break
+        }
+        case 4: {
+          const start = opAux[i]
+          const end = start + opLen[i]
+          let mn = Number.NEGATIVE_INFINITY
+          let mx = Number.NEGATIVE_INFINITY
+          for (let j = start; j < end; j++) {
+            const o = flatOps[j]
+            const omn = nMin[o]
+            const omx = nMax[o]
+            mn = omn > mn || Number.isNaN(omn) ? omn : mn
+            mx = omx > mx || Number.isNaN(omx) ? omx : mx
+          }
+          nMin[i] = mn
+          nMax[i] = mx
+          break
+        }
+        case 5: {
+          const o = flatOps[opAux[i]]
+          nMin[i] = evalResScalar(nMax[o])
+          nMax[i] = evalResScalar(nMin[o])
+          break
+        }
+        case 6: {
+          const start = opAux[i]
+          const end = start + opLen[i]
+          const o0 = flatOps[start]
+          let mn = nMin[o0]
+          let mx = nMax[o0]
+          for (let j = start + 1; j < end; j++) {
+            const o = flatOps[j]
+            const cmn = nMin[o]
+            const cmx = nMax[o]
+            const p1 = mn * cmn
+            const p2 = mn * cmx
+            const p3 = mx * cmn
+            const p4 = mx * cmx
+            mn = Math.min(p1, p2, p3, p4)
+            mx = Math.max(p1, p2, p3, p4)
+          }
+          nMin[i] = mn
+          nMax[i] = mx
+          break
+        }
+        case 7: {
+          const start = opAux[i]
+          const v = flatOps[start]
+          const t = flatOps[start + 1]
+          const p = flatOps[start + 2]
+          const fl = flatOps[start + 3]
+          if (nMin[v] >= nMax[t]) {
+            nMin[i] = nMin[p]
+            nMax[i] = nMax[p]
+          } else if (nMax[v] < nMin[t]) {
+            nMin[i] = nMin[fl]
+            nMax[i] = nMax[fl]
+          } else {
+            nMin[i] = Math.min(nMin[p], nMin[fl])
+            nMax[i] = Math.max(nMax[p], nMax[fl])
+          }
+          break
+        }
+        case 8: {
+          const start = opAux[i]
+          const x = flatOps[start]
+          const c = flatOps[start + 1]
+          const xmn = nMin[x]
+          const xmx = nMax[x]
+          const smn = xmn + nMin[c]
+          const smx = xmx + nMax[c]
+          if (smn <= 0 && smx >= 0) {
+            if (xmn <= 0 && xmx >= 0) {
+              nMin[i] = Number.NaN
+              nMax[i] = Number.NaN
+            } else {
+              nMin[i] = Number.NEGATIVE_INFINITY
+              nMax[i] = Number.POSITIVE_INFINITY
+            }
+          } else {
+            const q1 = xmn / smn
+            const q2 = xmn / smx
+            const q3 = xmx / smn
+            const q4 = xmx / smx
+            nMin[i] = Math.min(q1, q2, q3, q4)
+            nMax[i] = Math.max(q1, q2, q3, q4)
+          }
+          break
+        }
+      }
+    }
+
+    for (let r = 0; r < numRoots; r++) {
+      if (!(nMax[rootIndices[r]] >= rootMins[r])) return false
+    }
+    return true
+  }
+
+  const baseVec = new Float64Array(K)
+  for (let k = 0; k < K; k++) {
+    baseVec[k] = arts.base[keys[k]] ?? 0
+  }
+
+  // Pre-pack per-slot artifact vectors once
+  let slotArts = allArtifactSlotKeys.map((s) => arts.values[s])
+  let slotMats = slotArts.map((list) => {
+    const mat = new Float64Array(list.length * K)
+    for (let i = 0; i < list.length; i++) {
+      const vals = list[i].values
+      const off = i * K
+      for (let k = 0; k < K; k++) {
+        mat[off + k] = vals[keys[k]] ?? 0
+      }
+    }
+    return mat
+  })
+
+  const slotMin = new Float64Array(5 * K)
+  const slotMax = new Float64Array(5 * K)
+  const fullMin = new Float64Array(K)
+  const fullMax = new Float64Array(K)
+  const otherMin = new Float64Array(K)
+  const otherMax = new Float64Array(K)
+  const curMin = new Float64Array(K)
+  const curMax = new Float64Array(K)
+
+  let anyChanged = false
   while (true) {
-    const artRanges = objKeyMap(allArtifactSlotKeys, (slot) =>
-      computeArtRange(wrap.arts.values[slot])
-    )
-    const otherArtRanges = objKeyMap(allArtifactSlotKeys, (key) =>
-      addArtRange(
-        Object.entries(artRanges)
-          .map((a) => (a[0] === key ? baseRange : a[1]))
-          .filter((x) => x)
-      )
-    )
+    for (let s = 0; s < 5; s++) {
+      const n = slotArts[s].length
+      if (n === 0) {
+        return {
+          base: arts.base,
+          values: {
+            flower: [],
+            plume: [],
+            sands: [],
+            goblet: [],
+            circlet: [],
+          },
+        }
+      }
+      const mat = slotMats[s]
+      const sOff = s * K
+      for (let k = 0; k < K; k++) {
+        slotMin[sOff + k] = mat[k]
+        slotMax[sOff + k] = mat[k]
+      }
+      for (let i = 1; i < n; i++) {
+        const off = i * K
+        for (let k = 0; k < K; k++) {
+          const v = mat[off + k]
+          if (v < slotMin[sOff + k]) slotMin[sOff + k] = v
+          if (v > slotMax[sOff + k]) slotMax[sOff + k] = v
+        }
+      }
+    }
+
+    for (let k = 0; k < K; k++) {
+      fullMin[k] =
+        baseVec[k] +
+        slotMin[k] +
+        slotMin[K + k] +
+        slotMin[2 * K + k] +
+        slotMin[3 * K + k] +
+        slotMin[4 * K + k]
+      fullMax[k] =
+        baseVec[k] +
+        slotMax[k] +
+        slotMax[K + k] +
+        slotMax[2 * K + k] +
+        slotMax[3 * K + k] +
+        slotMax[4 * K + k]
+    }
+
+    // O(1) whole-box early exit before per-artifact scans
+    if (!checkBoxFeasible(fullMin, fullMax)) {
+      return {
+        base: arts.base,
+        values: {
+          flower: [],
+          plume: [],
+          sands: [],
+          goblet: [],
+          circlet: [],
+        },
+      }
+    }
 
     let progress = false
-    const values = objKeyMap(allArtifactSlotKeys, (slot) => {
-      const result = wrap.arts.values[slot].filter((art) => {
-        const read = addArtRange([computeArtRange([art]), otherArtRanges[slot]])
-        const newRange = computeNodeRange(nodes, read)
-        return nodes.every(
-          (node, i) =>
-            newRange.get(node)!.max >= (minimum[i] ?? Number.NEGATIVE_INFINITY)
-        )
-      })
-      if (result.length !== wrap.arts.values[slot].length) progress = true
-      return result
-    })
+    const nextSlotArts: typeof slotArts = [[], [], [], [], []]
+    const nextSlotMats: Float64Array[] = []
+
+    for (let s = 0; s < 5; s++) {
+      for (let k = 0; k < K; k++) {
+        let omn = baseVec[k]
+        let omx = baseVec[k]
+        for (let s2 = 0; s2 < 5; s2++) {
+          if (s2 !== s) {
+            omn += slotMin[s2 * K + k]
+            omx += slotMax[s2 * K + k]
+          }
+        }
+        otherMin[k] = omn
+        otherMax[k] = omx
+      }
+
+      const list = slotArts[s]
+      const mat = slotMats[s]
+      const n = list.length
+      const keptIdx: number[] = []
+
+      for (let i = 0; i < n; i++) {
+        const off = i * K
+        for (let k = 0; k < K; k++) {
+          const v = mat[off + k]
+          curMin[k] = otherMin[k] + v
+          curMax[k] = otherMax[k] + v
+        }
+        if (checkBoxFeasible(curMin, curMax)) {
+          keptIdx.push(i)
+        }
+      }
+
+      if (keptIdx.length === n) {
+        nextSlotArts[s] = list
+        nextSlotMats.push(mat)
+      } else {
+        progress = true
+        anyChanged = true
+        if (keptIdx.length === 0) {
+          return {
+            base: arts.base,
+            values: {
+              flower: [],
+              plume: [],
+              sands: [],
+              goblet: [],
+              circlet: [],
+            },
+          }
+        }
+        const newList = new Array<ArtifactBuildData>(keptIdx.length)
+        const newMat = new Float64Array(keptIdx.length * K)
+        for (let j = 0; j < keptIdx.length; j++) {
+          const srcIdx = keptIdx[j]
+          newList[j] = list[srcIdx]
+          newMat.set(mat.subarray(srcIdx * K, (srcIdx + 1) * K), j * K)
+        }
+        nextSlotArts[s] = newList
+        nextSlotMats.push(newMat)
+      }
+    }
+
     if (!progress) break
-    wrap.arts = { base: wrap.arts.base, values }
+    slotArts = nextSlotArts
+    slotMats = nextSlotMats
   }
-  return wrap.arts
+
+  if (!anyChanged) return arts
+  return {
+    base: arts.base,
+    values: {
+      flower: slotArts[0],
+      plume: slotArts[1],
+      sands: slotArts[2],
+      goblet: slotArts[3],
+      circlet: slotArts[4],
+    },
+  }
 }
 function pruneNodeRange(nodes: OptNode[], arts: ArtifactsBySlot): OptNode[] {
   const baseRange = Object.fromEntries(
@@ -825,7 +1325,9 @@ export type RequestFilter = Record<
   | { kind: 'required'; sets: Set<ArtifactSetKey> }
   | { kind: 'exclude'; sets: Set<ArtifactSetKey> }
   | { kind: 'id'; ids: Set<string> }
->
+> & {
+  exclude4pc?: ArtifactSetKey[]
+}
 
 export type DynStat = { [key in string]: number }
 export type ArtifactBuildData = {

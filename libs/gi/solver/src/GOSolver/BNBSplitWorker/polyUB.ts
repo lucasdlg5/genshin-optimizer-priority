@@ -207,13 +207,18 @@ export function polyUB(
                 .filter((op) => op.operation === 'const')
                 .map((c) => (c as ConstantNode<number>).value)
             )
-          if (
-            (operation === 'max' && context === lower) ||
-            (operation === 'min' && context === upper)
-          )
-            return x
-          const { min, max } = minMaxes.get(xOp)!,
-            yMin = op([min, c]),
+          const { min, max } = minMaxes.get(xOp)!
+          if (operation === 'min' && context === upper) {
+            if (max <= c) return x
+            if (min >= c) return constP(c)
+            return slopePoint((c - min) / (max - min), c, c, x)
+          }
+          if (operation === 'max' && context === lower) {
+            if (min >= c) return x
+            if (max <= c) return constP(c)
+            return slopePoint((max - c) / (max - min), c, c, x)
+          }
+          const yMin = op([min, c]),
             yMax = op([max, c])
           return interpolate(min, yMin, max, yMax, x, context === upper)
         }
@@ -289,11 +294,11 @@ export function polyUB(
 
           const v = map(vOp, isFirstHalf ? upper : lower)
           if (isFirstHalf) {
-            const slope = (pass - fail) / (thresh - min)
+            const span = Math.max(thresh, max) - min
+            const slope = (pass - fail) / span
             return slopePoint(slope, thresh, pass, v)
           }
           // not first half -> return const(fail)
-          // Can also interpolate slopePoint on 2nd half, but I choose not to
           return constP(fail)
         }
         default:
