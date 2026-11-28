@@ -78,6 +78,7 @@ type BuildDisplayItemProps = {
   disabled?: boolean
   extraButtonsRight?: JSX.Element
   extraButtonsLeft?: JSX.Element
+  extraBelowBasic?: ReactNode
   mainStatAssumptionLevel: number
 }
 
@@ -86,6 +87,7 @@ export const BuildDisplayItem = memo(function BuildDisplayItem({
   label,
   extraButtonsRight,
   extraButtonsLeft,
+  extraBelowBasic,
   disabled,
   mainStatAssumptionLevel,
 }: BuildDisplayItemProps) {
@@ -431,7 +433,7 @@ export const BuildDisplayItem = memo(function BuildDisplayItem({
             weaponUsedInTeamCharKey={weaponUsedInTeamCharKey}
             artUsedInTeamCharKeys={artUsedInTeamCharKeys}
           />
-          <StatDisplayComponent />
+          <StatDisplayComponent extraBelowBasic={extraBelowBasic} />
         </CardContent>
       </Suspense>
     </CardThemed>

@@ -9,13 +9,20 @@ import type {
   ArtifactSetKey,
   CharacterKey,
   ElementKey,
+  GenderKey,
 } from '@genshin-optimizer/gi/consts'
 import { absorbableEle } from '@genshin-optimizer/gi/consts'
+import type {
+  ArtCharDatabase,
+  ICachedArtifact,
+  ICachedWeapon,
+} from '@genshin-optimizer/gi/db'
 import {
   useDatabase,
   useDBMeta,
   useOptConfig,
   useTeam,
+  useTeamChar,
 } from '@genshin-optimizer/gi/db-ui'
 import { getCharEle } from '@genshin-optimizer/gi/stats'
 import type { TeamData } from '@genshin-optimizer/gi/ui'
@@ -25,10 +32,10 @@ import {
   getTeamData,
   resolveInfo,
 } from '@genshin-optimizer/gi/ui'
-import type { CalcResult } from '@genshin-optimizer/gi/uidata'
+import type { CalcResult, UIData } from '@genshin-optimizer/gi/uidata'
 import { uiDataForTeam } from '@genshin-optimizer/gi/uidata'
-import type { Data } from '@genshin-optimizer/gi/wr'
-import { constant, uiInput as input } from '@genshin-optimizer/gi/wr'
+import type { Data, NumNode } from '@genshin-optimizer/gi/wr'
+import { constant, uiInput as input, mergeData } from '@genshin-optimizer/gi/wr'
 import {
   Box,
   CardContent,
@@ -48,7 +55,7 @@ type SupportArtifactSpec = {
   getCond: (ele: ElementKey) => Record<string, string>
 }
 
-const SUPPORT_ARTIFACT_SPECS: SupportArtifactSpec[] = [
+export const SUPPORT_ARTIFACT_SPECS: SupportArtifactSpec[] = [
   {
     setKey: 'NoblesseOblige',
     desc: '4pc: +20% ATK',
@@ -146,23 +153,225 @@ function stripSetData(
   })
 }
 
+function getTargetCalcResult(
+  ui: UIData,
+  optimizationTarget: string[]
+): CalcResult<number> | undefined {
+  const fullPath = ['display', ...optimizationTarget]
+  let targetNode: NumNode | undefined
+  for (const data of ui.data) {
+    const raw = objPathValue(data, fullPath) as NumNode | undefined
+    if (raw?.operation) targetNode = raw
+  }
+  return targetNode ? ui.get(targetNode) : undefined
+}
+
+export type SupportArtifactComparisonRow = {
+  setKey: ArtifactSetKey
+  desc: string
+  simValue: number
+  diff: number
+  diffPct: number
+}
+
+export type SupportArtifactComparisonResult = {
+  targetName: string
+  targetUnit: string
+  targetFixed?: number
+  baseValue: number
+  activeSupportSets: ArtifactSetKey[]
+  rows: SupportArtifactComparisonRow[]
+}
+
+export function computeSupportArtifactBuffComparison({
+  database,
+  teamId,
+  teamCharId,
+  characterKey,
+  gender,
+  optimizationTarget,
+  teammateKeys,
+  effectiveReplaceKey = '',
+  mainStatAssumptionLevel = 0,
+  overrideArt,
+  overrideWeapon,
+}: {
+  database: ArtCharDatabase
+  teamId: string
+  teamCharId: string
+  characterKey: CharacterKey
+  gender: GenderKey
+  optimizationTarget: string[]
+  teammateKeys: CharacterKey[]
+  effectiveReplaceKey?: CharacterKey | ''
+  mainStatAssumptionLevel?: number
+  overrideArt?: ICachedArtifact[] | Data
+  overrideWeapon?: ICachedWeapon
+}): SupportArtifactComparisonResult | undefined {
+  if (!optimizationTarget?.length) return undefined
+
+  const rawTeamBundle = getTeamData(
+    database,
+    teamId,
+    teamCharId,
+    mainStatAssumptionLevel,
+    overrideArt,
+    overrideWeapon
+  )
+  if (!rawTeamBundle) return undefined
+  const baseTeamData = rawTeamBundle.teamData
+  const onFieldCharKey =
+    database.teams.getActiveTeamChar(teamId)?.key ?? characterKey
+
+  // Pre-merge each member's Data[] once so simulated passes don't re-merge 8+ sheets per member
+  const preMergedTeamData: Partial<Record<CharacterKey, Data[]>> = {}
+  for (const [ck, dataArr] of Object.entries(baseTeamData)) {
+    if (dataArr) preMergedTeamData[ck as CharacterKey] = [mergeData(dataArr)]
+  }
+
+  const baseCalcData = uiDataForTeam(preMergedTeamData, gender, onFieldCharKey)
+  const activeTargetUIData = baseCalcData[characterKey]?.target
+  if (!activeTargetUIData) return undefined
+
+  const baseTargetNode = getTargetCalcResult(
+    activeTargetUIData,
+    optimizationTarget
+  )
+  if (!baseTargetNode || typeof baseTargetNode.value !== 'number')
+    return undefined
+
+  const baseValue = baseTargetNode.value
+  const targetInfo = resolveInfo(baseTargetNode.info)
+  const targetName = targetInfo.name ?? optimizationTarget.join(' / ')
+  const targetUnit = targetInfo.unit ?? ''
+  const targetFixed = targetInfo.fixed
+
+  // Detect which support sets are currently active (>= 4pc) on each team member
+  const activeSetsByChar = new Map<CharacterKey, Set<ArtifactSetKey>>()
+  const allActiveSupportSets = new Set<ArtifactSetKey>()
+  for (const [ck, tdc] of Object.entries(baseCalcData)) {
+    if (!tdc) continue
+    const setsForChar = new Set<ArtifactSetKey>()
+    for (const spec of SUPPORT_ARTIFACT_SPECS) {
+      const cnt = tdc.target.get(input.artSet[spec.setKey]).value ?? 0
+      if (cnt >= 4) {
+        setsForChar.add(spec.setKey)
+        allActiveSupportSets.add(spec.setKey)
+      }
+    }
+    activeSetsByChar.set(ck as CharacterKey, setsForChar)
+  }
+
+  const charEle = getCharEle(characterKey)
+  const defaultCarrierKey = teammateKeys[0] ?? characterKey
+  const hexereiTeammateKey = teammateKeys.find(
+    (tk) => baseCalcData[tk]?.target.get(input.flags.isHexerei).value === 1
+  )
+
+  // Sets already equipped by OTHER members (not the replaced teammate)
+  const otherMembersSets = new Set<ArtifactSetKey>()
+  for (const [ck, sets] of activeSetsByChar.entries()) {
+    if (effectiveReplaceKey && ck === effectiveReplaceKey) continue
+    for (const s of sets) otherMembersSets.add(s)
+  }
+
+  const rows = SUPPORT_ARTIFACT_SPECS.filter((spec) => {
+    if (effectiveReplaceKey) {
+      if (otherMembersSets.has(spec.setKey)) return false
+      if (activeSetsByChar.get(effectiveReplaceKey)?.has(spec.setKey))
+        return false
+      return true
+    }
+    return !allActiveSupportSets.has(spec.setKey)
+  })
+    .map((spec) => {
+      const carrierKey =
+        effectiveReplaceKey ||
+        (spec.setKey === 'CelestialGift' && hexereiTeammateKey
+          ? hexereiTeammateKey
+          : defaultCarrierKey)
+      const condRaw = spec.getCond(charEle)
+      const condNodes = Object.fromEntries(
+        Object.entries(condRaw).map(([k, v]) => [k, constant(v)])
+      )
+
+      const simTeamData: Partial<Record<CharacterKey, Data[]>> = {
+        ...preMergedTeamData,
+      }
+      const carrierData = baseTeamData[carrierKey]
+      if (!carrierData) return undefined
+
+      const cleanedCarrierData = stripSetData(
+        carrierData,
+        Boolean(effectiveReplaceKey),
+        spec.setKey
+      )
+      const injectedData: Data = {
+        artSet: { [spec.setKey]: constant(4) },
+        conditional: {
+          [spec.setKey]: condNodes,
+        } as unknown as Data['conditional'],
+      }
+      simTeamData[carrierKey] = [injectedData, ...cleanedCarrierData]
+
+      const simUI = uiDataForTeam(simTeamData, gender, onFieldCharKey)[
+        characterKey
+      ]?.target
+      if (!simUI) return undefined
+
+      const simNode = getTargetCalcResult(simUI, optimizationTarget)
+      if (!simNode || typeof simNode.value !== 'number') return undefined
+
+      const simValue = simNode.value
+      const diff = simValue - baseValue
+      const diffPct = baseValue !== 0 ? (diff / baseValue) * 100 : 0
+
+      return {
+        setKey: spec.setKey,
+        desc: spec.desc,
+        simValue,
+        diff,
+        diffPct,
+      }
+    })
+    .filter(notEmpty)
+    .sort((a, b) => b.diffPct - a.diffPct)
+
+  return {
+    targetName,
+    targetUnit,
+    targetFixed,
+    baseValue,
+    activeSupportSets: Array.from(allActiveSupportSets),
+    rows,
+  }
+}
+
 export const SupportArtifactBuffComparison = memo(
   function SupportArtifactBuffComparison({
     teamId,
     teamCharId,
     characterKey,
     teamData,
+    mainStatAssumptionLevel = 0,
+    overrideArt,
+    overrideWeapon,
+    bgt = 'light',
   }: {
     teamId: string
     teamCharId: string
     characterKey: CharacterKey
     teamData?: TeamData
+    mainStatAssumptionLevel?: number
+    overrideArt?: ICachedArtifact[] | Data
+    overrideWeapon?: ICachedWeapon
+    bgt?: 'light' | 'normal' | 'dark'
   }) {
     const { t } = useTranslation('page_team')
     const database = useDatabase()
     const { gender } = useDBMeta()
     const team = useTeam(teamId)
-    const teamChar = database.teamChars.get(teamCharId)
+    const teamChar = useTeamChar(teamCharId)
     const optConfig = useOptConfig(teamChar?.optConfigId ?? '')
     const optimizationTarget = optConfig?.optimizationTarget
 
@@ -172,142 +381,38 @@ export const SupportArtifactBuffComparison = memo(
     const teammateKeys = useMemo(() => {
       if (!team) return [] as CharacterKey[]
       return team.loadoutData
-        .slice(1)
         .filter(notEmpty)
         .map((ld) => database.teamChars.get(ld.teamCharId)?.key)
-        .filter(notEmpty)
-    }, [team, database])
+        .filter((k): k is CharacterKey => Boolean(k && k !== characterKey))
+    }, [team, database, characterKey])
 
     const effectiveReplaceKey =
       replaceCharKey && teammateKeys.includes(replaceCharKey)
         ? replaceCharKey
         : ''
 
+    // Include teamData & teamChar in deps so edits to team members, conditionals, or custom multi-targets re-evaluate immediately
     const comparison = useMemo(() => {
-      if (!optimizationTarget?.length || !teamData) return undefined
-      const activeTargetUIData = teamData[characterKey]?.target
-      if (!activeTargetUIData) return undefined
-
-      const baseTargetNode = objPathValue(
-        activeTargetUIData.getDisplay(),
-        optimizationTarget
-      ) as CalcResult | undefined
-      if (!baseTargetNode || typeof baseTargetNode.value !== 'number')
-        return undefined
-
-      const baseValue = baseTargetNode.value
-      const targetInfo = resolveInfo(baseTargetNode.info)
-      const targetName = targetInfo.name ?? optimizationTarget.join(' / ')
-      const targetUnit = targetInfo.unit ?? ''
-      const targetFixed = targetInfo.fixed
-
-      const rawTeamBundle = getTeamData(database, teamId, teamCharId, 0)
-      if (!rawTeamBundle) return undefined
-      const baseTeamData = rawTeamBundle.teamData
-
-      // Detect which support sets are currently active (>= 4pc) on each team member
-      const activeSetsByChar = new Map<CharacterKey, Set<ArtifactSetKey>>()
-      const allActiveSupportSets = new Set<ArtifactSetKey>()
-      for (const [ck, tdc] of Object.entries(teamData)) {
-        if (!tdc) continue
-        const setsForChar = new Set<ArtifactSetKey>()
-        for (const spec of SUPPORT_ARTIFACT_SPECS) {
-          const cnt = tdc.target.get(input.artSet[spec.setKey]).value ?? 0
-          if (cnt >= 4) {
-            setsForChar.add(spec.setKey)
-            allActiveSupportSets.add(spec.setKey)
-          }
-        }
-        activeSetsByChar.set(ck as CharacterKey, setsForChar)
-      }
-
-      const charEle = getCharEle(characterKey)
-      // Choose carrier: selected teammate (if replacing), else first teammate, else on-field character
-      const defaultCarrierKey =
-        teammateKeys[0] ?? (characterKey as CharacterKey)
-      const carrierKey = effectiveReplaceKey || defaultCarrierKey
-
-      // Sets already equipped by OTHER members (not the replaced teammate)
-      const otherMembersSets = new Set<ArtifactSetKey>()
-      for (const [ck, sets] of activeSetsByChar.entries()) {
-        if (effectiveReplaceKey && ck === effectiveReplaceKey) continue
-        for (const s of sets) otherMembersSets.add(s)
-      }
-
-      const rows = SUPPORT_ARTIFACT_SPECS.filter((spec) => {
-        if (effectiveReplaceKey) {
-          // When simulating replacing a teammate's set, skip sets already worn by OTHER members
-          // and skip the set already worn by the replaced teammate
-          if (otherMembersSets.has(spec.setKey)) return false
-          if (activeSetsByChar.get(effectiveReplaceKey)?.has(spec.setKey))
-            return false
-          return true
-        }
-        // Default mode: only show support sets NOT currently present in the team
-        return !allActiveSupportSets.has(spec.setKey)
+      void teamData
+      void teamChar
+      if (!optimizationTarget?.length) return undefined
+      return computeSupportArtifactBuffComparison({
+        database,
+        teamId,
+        teamCharId,
+        characterKey,
+        gender,
+        optimizationTarget,
+        teammateKeys,
+        effectiveReplaceKey,
+        mainStatAssumptionLevel,
+        overrideArt,
+        overrideWeapon,
       })
-        .map((spec) => {
-          const condRaw = spec.getCond(charEle)
-          const condNodes = Object.fromEntries(
-            Object.entries(condRaw).map(([k, v]) => [k, constant(v)])
-          )
-
-          const simTeamData: Partial<Record<CharacterKey, Data[]>> = {
-            ...baseTeamData,
-          }
-          const carrierData = baseTeamData[carrierKey]
-          if (!carrierData) return undefined
-
-          const cleanedCarrierData = stripSetData(
-            carrierData,
-            Boolean(effectiveReplaceKey),
-            spec.setKey
-          )
-          const injectedData: Data = {
-            artSet: { [spec.setKey]: constant(4) },
-            conditional: {
-              [spec.setKey]: condNodes,
-            } as unknown as Data['conditional'],
-          }
-          simTeamData[carrierKey] = [injectedData, ...cleanedCarrierData]
-
-          const simUI = uiDataForTeam(simTeamData, gender, characterKey)[
-            characterKey
-          ]?.target
-          if (!simUI) return undefined
-
-          const simNode = objPathValue(
-            simUI.getDisplay(),
-            optimizationTarget
-          ) as CalcResult | undefined
-          if (!simNode || typeof simNode.value !== 'number') return undefined
-
-          const simValue = simNode.value
-          const diff = simValue - baseValue
-          const diffPct = baseValue !== 0 ? (diff / baseValue) * 100 : 0
-
-          return {
-            setKey: spec.setKey,
-            desc: spec.desc,
-            simValue,
-            diff,
-            diffPct,
-          }
-        })
-        .filter(notEmpty)
-        .sort((a, b) => b.diffPct - a.diffPct)
-
-      return {
-        targetName,
-        targetUnit,
-        targetFixed,
-        baseValue,
-        activeSupportSets: Array.from(allActiveSupportSets),
-        rows,
-      }
     }, [
       optimizationTarget,
       teamData,
+      teamChar,
       characterKey,
       database,
       teamId,
@@ -315,11 +420,14 @@ export const SupportArtifactBuffComparison = memo(
       teammateKeys,
       effectiveReplaceKey,
       gender,
+      mainStatAssumptionLevel,
+      overrideArt,
+      overrideWeapon,
     ])
 
     if (!optimizationTarget?.length) {
       return (
-        <CardThemed bgt="light">
+        <CardThemed bgt={bgt}>
           <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
             <Typography
               variant="subtitle2"
@@ -353,7 +461,7 @@ export const SupportArtifactBuffComparison = memo(
     } = comparison
 
     return (
-      <CardThemed bgt="light">
+      <CardThemed bgt={bgt}>
         <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
           <Stack spacing={1}>
             <Box>
@@ -384,7 +492,11 @@ export const SupportArtifactBuffComparison = memo(
                 </Typography>
                 <Typography
                   variant="body2"
-                  sx={{ fontWeight: 'bold', flexShrink: 0 }}
+                  sx={{
+                    fontWeight: 'bold',
+                    flexShrink: 0,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
                 >
                   {valueString(baseValue, targetUnit, targetFixed)}
                 </Typography>
@@ -452,11 +564,16 @@ export const SupportArtifactBuffComparison = memo(
                     ? 'error.main'
                     : 'text.secondary'
                 const sign = diffPct > 0.05 ? '+' : ''
-                const absDiffStr = `${diff > 0 ? '+' : ''}${valueString(
+                const absDiffStr = `${diff > 0.005 ? '+' : ''}${valueString(
                   diff,
                   targetUnit,
                   targetFixed
                 )}`
+                const simTotalStr = valueString(
+                  simValue,
+                  targetUnit,
+                  targetFixed
+                )
 
                 return (
                   <Box
@@ -493,7 +610,7 @@ export const SupportArtifactBuffComparison = memo(
                         <Box>
                           <Typography
                             variant="caption"
-                            sx={{ display: 'block' }}
+                            sx={{ display: 'block', fontWeight: 'bold' }}
                           >
                             {desc}
                           </Typography>
@@ -501,34 +618,63 @@ export const SupportArtifactBuffComparison = memo(
                             variant="caption"
                             sx={{ display: 'block' }}
                           >
-                            Δ {absDiffStr}
+                            {valueString(baseValue, targetUnit, targetFixed)} →{' '}
+                            {simTotalStr} ({absDiffStr})
                           </Typography>
                         </Box>
                       }
                     />
-                    <Typography
-                      variant="caption"
+                    <Box
                       sx={{
-                        fontWeight: 'bold',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-end',
                         flexShrink: 0,
-                        fontVariantNumeric: 'tabular-nums',
                       }}
                     >
-                      {valueString(simValue, targetUnit, targetFixed)}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        fontWeight: 'bold',
-                        color: pctColor,
-                        minWidth: '3.6em',
-                        textAlign: 'right',
-                        flexShrink: 0,
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
-                      {`${sign}${diffPct.toFixed(1)}%`}
-                    </Typography>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'baseline',
+                          gap: 0.75,
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontWeight: 'bold',
+                            color: pctColor,
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {absDiffStr}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontWeight: 'bold',
+                            color: pctColor,
+                            minWidth: '3.6em',
+                            textAlign: 'right',
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {`${sign}${diffPct.toFixed(1)}%`}
+                        </Typography>
+                      </Box>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          fontSize: '0.68rem',
+                          lineHeight: 1.15,
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {t('teamSettings.supportArtBuffs.total', 'Total:')}{' '}
+                        {simTotalStr}
+                      </Typography>
+                    </Box>
                   </Box>
                 )
               })}

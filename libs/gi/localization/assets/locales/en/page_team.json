@@ -47,7 +47,8 @@
       "noTarget": "Select an Optimization Target in the Optimize tab to compare support artifact buffs.",
       "activeInTeam": "Active:",
       "modeAdd": "Simulate adding buff to team",
-      "modeReplace": "Replace set on:"
+      "modeReplace": "Replace set on:",
+      "total": "Total:"
     }
   },
   "exportModal": {

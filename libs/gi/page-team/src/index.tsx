@@ -173,7 +173,8 @@ function Page({ teamId }: { teamId: string }) {
       }
     }, [teamId, team, teamCharId, teamChar, loadoutDatum])
 
-  const teamData = useTeamDataNoContext(teamId, teamCharId ?? '')
+  const activeTeamCharId = teamCharId ?? loadoutData[0]?.teamCharId ?? ''
+  const teamData = useTeamDataNoContext(teamId, activeTeamCharId)
   const { target: charUIData } =
     (characterKey && teamData?.[characterKey]) ?? {}
 

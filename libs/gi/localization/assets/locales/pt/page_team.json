@@ -24,7 +24,8 @@
       "noTarget": "Selecione um alvo de otimização na aba Otimizar para comparar os buffs de artefatos suporte.",
       "activeInTeam": "Ativos:",
       "modeAdd": "Simular adicionar buff ao time",
-      "modeReplace": "Substituir set de:"
+      "modeReplace": "Substituir set de:",
+      "total": "Total:"
     }
   }
 }

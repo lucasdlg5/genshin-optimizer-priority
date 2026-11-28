@@ -123,6 +123,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
+import { SupportArtifactBuffComparison } from '../../../TeamSetting/SupportArtifactBuffComparison'
 import useCompareData from '../../../useCompareData'
 import CompareBtn from '../../CompareBtn'
 import { CustomMultiTargetButton } from '../../CustomMultiTarget/CustomMultiTargetButton'
@@ -1468,6 +1469,19 @@ const BuildItemWrapper = memo(function BuildItemWrapper({
   mainStatAssumptionLevel: number
 }) {
   const { t } = useTranslation('page_character_optimize')
+  const {
+    teamId,
+    teamCharId,
+    teamChar: { key: characterKey },
+  } = useContext(TeamCharacterContext)
+  const { teamData } = useContext(DataContext)
+  const artifacts = useArtifacts(build.artifactIds)
+  const buildsArts = useMemo(
+    () => Object.values(artifacts).filter(notEmpty),
+    [artifacts]
+  )
+  const buildWeapon = useWeapon(build.weaponId)
+
   const extraButtonsLeft = useMemo(() => {
     return (
       <>
@@ -1486,11 +1500,37 @@ const BuildItemWrapper = memo(function BuildItemWrapper({
       </>
     )
   }, [build, deleteBuild, index, t])
+
+  const extraBelowBasic = useMemo(
+    () => (
+      <SupportArtifactBuffComparison
+        teamId={teamId}
+        teamCharId={teamCharId}
+        characterKey={characterKey}
+        teamData={teamData}
+        mainStatAssumptionLevel={mainStatAssumptionLevel}
+        overrideArt={buildsArts}
+        overrideWeapon={buildWeapon}
+        bgt="normal"
+      />
+    ),
+    [
+      teamId,
+      teamCharId,
+      characterKey,
+      teamData,
+      mainStatAssumptionLevel,
+      buildsArts,
+      buildWeapon,
+    ]
+  )
+
   return (
     <BuildDisplayItem
       label={label}
       disabled={disabled}
       extraButtonsLeft={extraButtonsLeft}
+      extraBelowBasic={extraBelowBasic}
       mainStatAssumptionLevel={mainStatAssumptionLevel}
     />
   )

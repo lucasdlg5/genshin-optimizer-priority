@@ -9,8 +9,8 @@ import type { CalcResult } from '@genshin-optimizer/gi/uidata'
 import type { DisplaySub } from '@genshin-optimizer/gi/wr'
 import type { MasonryProps } from '@mui/lab'
 import { Masonry } from '@mui/lab'
-import { Box, Button, Divider, ListItem } from '@mui/material'
-import type { FC } from 'react'
+import { Box, Button, Divider, ListItem, Stack } from '@mui/material'
+import type { FC, ReactNode } from 'react'
 import { useContext, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DataContext, OptTargetContext } from '../../context'
@@ -25,10 +25,12 @@ export function StatDisplayComponent({
   columns = { xs: 1, sm: 2, md: 3, xl: 4 },
   BonusStatEditor,
   CustomMTargetEditor,
+  extraBelowBasic,
 }: {
   columns?: MasonryProps['columns']
   BonusStatEditor?: FC<EditorModalProps>
   CustomMTargetEditor?: FC<EditorModalProps>
+  extraBelowBasic?: ReactNode
 }) {
   const { data, compareData } = useContext(DataContext)
   const dataDisplaySections = useMemo(() => getDisplaySections(data), [data])
@@ -60,24 +62,39 @@ export function StatDisplayComponent({
         if (!sectionKeys.includes(key)) sectionKeys.push(key)
     return sectionKeys
   }, [sections, compareSections])
+  const hasBasicSection = sectionKeys.includes('basic')
   return (
     <Box sx={{ mr: -1, mb: -1 }}>
       <Masonry columns={columns} spacing={1}>
-        {sectionKeys.map((key) => (
-          <Section
-            key={key}
-            displayNs={sections.find(([k]) => k === key)?.[1]}
-            compareDisplayNs={compareSections?.find(([k]) => k === key)?.[1]}
-            sectionKey={key}
-            Editor={
-              key === 'bonusStats'
-                ? BonusStatEditor
-                : key === 'custom'
-                  ? CustomMTargetEditor
-                  : undefined
-            }
-          />
-        ))}
+        {sectionKeys.map((key) => {
+          const sectionNode = (
+            <Section
+              key={key}
+              displayNs={sections.find(([k]) => k === key)?.[1]}
+              compareDisplayNs={compareSections?.find(([k]) => k === key)?.[1]}
+              sectionKey={key}
+              Editor={
+                key === 'bonusStats'
+                  ? BonusStatEditor
+                  : key === 'custom'
+                    ? CustomMTargetEditor
+                    : undefined
+              }
+            />
+          )
+          if (key === 'basic' && extraBelowBasic) {
+            return (
+              <Stack key={key} spacing={1}>
+                {sectionNode}
+                {extraBelowBasic}
+              </Stack>
+            )
+          }
+          return sectionNode
+        })}
+        {!hasBasicSection && extraBelowBasic && (
+          <Box key="extra-below-basic">{extraBelowBasic}</Box>
+        )}
       </Masonry>
     </Box>
   )
