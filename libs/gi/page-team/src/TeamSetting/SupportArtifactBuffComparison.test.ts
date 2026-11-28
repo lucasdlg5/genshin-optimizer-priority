@@ -220,4 +220,45 @@ describe('computeSupportArtifactBuffComparison', () => {
     )
     expect(avgStats.eleMas - recitativeStats.eleMas).toBeCloseTo(160, 4)
   })
+
+  it('computes support artifact and weapon buffs for Skirk + Escoffier + Furina + Vodyanitsa team', () => {
+    const db = new ArtCharDatabase(1, createTestDBStorage('go_skirk'))
+    for (const ck of ['Skirk', 'Escoffier', 'Furina', 'Vodyanitsa'] as const) {
+      db.chars.getWithInitWeapon(ck)
+      db.chars.set(ck, {
+        level: 90,
+        ascension: 6,
+        constellation: 0,
+        talent: { auto: 9, skill: 9, burst: 9 },
+      })
+    }
+    const tcSkirk = db.teamChars.new('Skirk')
+    const tcEsc = db.teamChars.new('Escoffier')
+    const tcFurina = db.teamChars.new('Furina')
+    const tcVod = db.teamChars.new('Vodyanitsa')
+    const teamId = db.teams.new({
+      name: 'Skirk Team',
+      loadoutData: [
+        { teamCharId: tcSkirk, buildType: 'equipped' },
+        { teamCharId: tcEsc, buildType: 'equipped' },
+        { teamCharId: tcFurina, buildType: 'equipped' },
+        { teamCharId: tcVod, buildType: 'equipped' },
+      ],
+    })
+
+    const res = computeSupportArtifactBuffComparison({
+      database: db,
+      teamId,
+      teamCharId: tcSkirk,
+      characterKey: 'Skirk',
+      gender: 'F',
+      optimizationTarget: ['burst', 'skillDmg'],
+      teammateKeys: ['Escoffier', 'Furina', 'Vodyanitsa'],
+    })
+
+    expect(res).toBeDefined()
+    expect(res!.baseValue).toBeGreaterThan(0)
+    expect(res!.rows.length).toBeGreaterThan(0)
+    expect(res!.weaponRows.length).toBeGreaterThan(0)
+  })
 })

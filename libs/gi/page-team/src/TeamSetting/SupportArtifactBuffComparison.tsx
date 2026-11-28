@@ -226,6 +226,11 @@ function getTargetCalcResult(
   ui: UIData,
   optimizationTarget: string[]
 ): CalcResult<number> | undefined {
+  const fromDisplay = objPathValue(ui.getDisplay(), optimizationTarget) as
+    | CalcResult<number>
+    | undefined
+  if (fromDisplay && typeof fromDisplay.value === 'number') return fromDisplay
+
   const fullPath = ['display', ...optimizationTarget]
   let targetNode: NumNode | undefined
   for (const data of ui.data) {
@@ -243,6 +248,14 @@ export type SupportArtifactComparisonRow = {
   diffPct: number
 }
 
+export type SupportWeaponComparisonRow = {
+  weaponKey: WeaponKey
+  desc: string
+  simValue: number
+  diff: number
+  diffPct: number
+}
+
 export type SupportArtifactComparisonResult = {
   targetName: string
   targetUnit: string
@@ -250,6 +263,8 @@ export type SupportArtifactComparisonResult = {
   baseValue: number
   activeSupportSets: ArtifactSetKey[]
   rows: SupportArtifactComparisonRow[]
+  activeSupportWeapons: WeaponKey[]
+  weaponRows: SupportWeaponComparisonRow[]
 }
 
 export function computeSupportArtifactBuffComparison({
@@ -548,7 +563,7 @@ export const SupportArtifactBuffComparison = memo(
       overrideWeapon,
     ])
 
-    if (!optimizationTarget?.length) {
+    if (!optimizationTarget?.length || !comparison) {
       return (
         <CardThemed bgt={bgt}>
           <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -558,21 +573,19 @@ export const SupportArtifactBuffComparison = memo(
             >
               {t(
                 'teamSettings.supportArtBuffs.title',
-                'Support Artifact Buffs'
+                'Buffs de Artefatos e Armas de Suporte'
               )}
             </Typography>
             <Typography variant="caption" color="text.secondary">
               {t(
                 'teamSettings.supportArtBuffs.noTarget',
-                'Select an Optimization Target in the Optimize tab to compare support artifact buffs.'
+                'Selecione um Objetivo de Otimização na aba Otimizar para comparar os buffs de artefatos e armas de suporte.'
               )}
             </Typography>
           </CardContent>
         </CardThemed>
       )
     }
-
-    if (!comparison) return null
 
     const {
       targetName,
