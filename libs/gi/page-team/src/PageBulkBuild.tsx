@@ -8,6 +8,7 @@ import {
   CardThemed,
   DropdownButton,
   InfoTooltip,
+  ModalWrapper,
   SqBadge,
   useTitle,
 } from '@genshin-optimizer/common/ui'
@@ -21,10 +22,12 @@ import {
 import type {
   ArtifactSlotKey,
   CharacterKey,
+  ElementKey,
 } from '@genshin-optimizer/gi/consts'
 import {
   allArtifactSetKeys,
   allArtifactSlotKeys,
+  allElementKeys,
   charKeyToLocCharKey,
 } from '@genshin-optimizer/gi/consts'
 import type {
@@ -56,6 +59,8 @@ import {
   terminateSolverWorkers,
 } from '@genshin-optimizer/gi/solver'
 import { compactArtifacts } from '@genshin-optimizer/gi/solver-tc'
+import { getCharEle } from '@genshin-optimizer/gi/stats'
+import { ElementIcon } from '@genshin-optimizer/gi/svgicons'
 import {
   ArtifactCardNano,
   CharacterBulkSelectionModal,
@@ -96,6 +101,7 @@ import {
   GroupAdd,
   Memory as MemoryIcon,
   PlayArrow,
+  TheaterComedy,
 } from '@mui/icons-material'
 import {
   Alert,
@@ -143,7 +149,10 @@ import {
   applyKqmArtifacts,
   applyKqmArtifactsForTeam,
 } from './CharacterDisplay/Tabs/TabOptimize/kqmArtifacts'
-import { calculateTeamKqmsEr } from './CharacterDisplay/Tabs/TabOptimize/kqmsErCalc'
+import {
+  calculateTeamKqmsEr,
+  getMultiTargetSkillInfo,
+} from './CharacterDisplay/Tabs/TabOptimize/kqmsErCalc'
 import { useTeamKqmsEr } from './CharacterDisplay/Tabs/TabOptimize/useTeamKqmsEr'
 import {
   deduplicateAndSortWeapons,
@@ -329,6 +338,7 @@ function buildSingleWeaponProblem({
             artifactSetCounts[a.setKey] = (artifactSetCounts[a.setKey] ?? 0) + 1
           }
         }
+        const memberOpt = database.optConfigs.get(tc.optConfigId)
         return {
           characterKey: tc.key,
           constellation: dbChar?.constellation ?? 0,
@@ -336,6 +346,10 @@ function buildSingleWeaponProblem({
           weaponKey: mWeapon?.key,
           weaponRefinement: mWeapon?.refinement ?? 1,
           artifactSetCounts,
+          ...getMultiTargetSkillInfo(
+            memberOpt?.optimizationTarget,
+            tc.customMultiTargets
+          ),
         }
       })
       .filter(notEmpty)
@@ -1161,19 +1175,8 @@ export function PageBulkBuild() {
         if (!team || !teamChar) continue
 
         if (!item.enabled) {
-          // Lock equipped gear of higher-priority disabled characters
-          const ld =
-            team.loadoutData.find((l) => l?.teamCharId === item.teamCharId) ??
-            ({
-              teamCharId: item.teamCharId,
-              buildType: 'equipped',
-            } as LoadoutDatum)
-          const curWep = database.teams.getLoadoutWeapon(ld)
-          if (curWep?.id) claimedWeaponIds.add(curWep.id)
-          const curArts = database.teams.getLoadoutArtifacts(ld)
-          for (const art of Object.values(curArts)) {
-            if (art?.id) claimedArtifactIds.add(art.id)
-          }
+          // Disabled characters are excluded from the build ranking:
+          // their artifacts and weapons remain available for lower-ranked characters.
           continue
         }
 
@@ -1302,6 +1305,49 @@ export function PageBulkBuild() {
     </CardThemed>
   )
 
+  const [showTheaterModal, onOpenTheaterModal, onCloseTheaterModal] =
+    useBoolState()
+  const [theaterElements, setTheaterElements] = useState<ElementKey[]>([])
+
+  const theaterElementCounts = useMemo(() => {
+    const counts = objKeyMap(allElementKeys, () => 0)
+    for (const item of queue) {
+      const tc = database.teamChars.get(item.teamCharId)
+      if (!tc) continue
+      const ele = getCharEle(tc.key)
+      counts[ele] = (counts[ele] ?? 0) + 1
+    }
+    return counts
+  }, [queue, database])
+
+  const handleToggleTheaterElement = useCallback((ele: ElementKey) => {
+    setTheaterElements((prev) =>
+      prev.includes(ele) ? prev.filter((e) => e !== ele) : [...prev, ele]
+    )
+  }, [])
+
+  const handleApplyTheaterFilter = useCallback(() => {
+    if (!theaterElements.length) return
+    const selected = new Set<ElementKey>(theaterElements)
+    setQueue(
+      queue.map((item) => {
+        const tc = database.teamChars.get(item.teamCharId)
+        if (!tc) return { ...item, enabled: false }
+        return {
+          ...item,
+          enabled: selected.has(getCharEle(tc.key)),
+        }
+      })
+    )
+    onCloseTheaterModal()
+  }, [theaterElements, queue, database, setQueue, onCloseTheaterModal])
+
+  const handleEnableAllQueue = useCallback(() => {
+    setQueue(queue.map((item) => ({ ...item, enabled: true })))
+    setTheaterElements([])
+    onCloseTheaterModal()
+  }, [queue, setQueue, onCloseTheaterModal])
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, my: 1 }}>
       {!isRunning && (
@@ -1332,6 +1378,88 @@ export function PageBulkBuild() {
               confirmLabel={t('bulkBuild.confirmSelectionBtn', 'Concluir')}
             />
           </Suspense>
+          <ModalWrapper open={showTheaterModal} onClose={onCloseTheaterModal}>
+            <CardThemed>
+              <CardContent
+                sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+              >
+                <TheaterComedy color="warning" />
+                <Typography variant="h6">
+                  {t(
+                    'bulkBuild.theaterModalTitle',
+                    'Teatro Elemental — Selecionar Elementos'
+                  )}
+                </Typography>
+                <IconButton
+                  onClick={onCloseTheaterModal}
+                  sx={{ ml: 'auto' }}
+                  size="small"
+                >
+                  <Close />
+                </IconButton>
+              </CardContent>
+              <Divider />
+              <CardContent
+                sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+              >
+                <Alert severity="info">
+                  {t(
+                    'bulkBuild.theaterModalDesc',
+                    'Selecione os elementos do Teatro Elemental atual. Apenas personagens desses elementos permanecerão habilitados; personagens desabilitados são desconsiderados do ranking e seus artefatos/armas podem ser usados por personagens abaixo.'
+                  )}
+                </Alert>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {allElementKeys.map((ele) => {
+                    const selected = theaterElements.includes(ele)
+                    return (
+                      <Button
+                        key={ele}
+                        variant={selected ? 'contained' : 'outlined'}
+                        color={ele}
+                        startIcon={<ElementIcon ele={ele} />}
+                        onClick={() => handleToggleTheaterElement(ele)}
+                        sx={{ textTransform: 'capitalize' }}
+                      >
+                        {ele} ({theaterElementCounts[ele]})
+                      </Button>
+                    )
+                  })}
+                </Box>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 1,
+                  }}
+                >
+                  <Button
+                    color="secondary"
+                    variant="outlined"
+                    onClick={handleEnableAllQueue}
+                  >
+                    {t('bulkBuild.theaterEnableAllBtn', 'Habilitar Todos')}
+                  </Button>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button color="secondary" onClick={onCloseTheaterModal}>
+                      {t('bulkBuild.cancelBtn', 'Cancelar')}
+                    </Button>
+                    <Button
+                      color="warning"
+                      variant="contained"
+                      disabled={!theaterElements.length}
+                      onClick={handleApplyTheaterFilter}
+                    >
+                      {t(
+                        'bulkBuild.theaterApplyBtn',
+                        'Aplicar Teatro Elemental'
+                      )}
+                    </Button>
+                  </Box>
+                </Box>
+              </CardContent>
+            </CardThemed>
+          </ModalWrapper>
         </>
       )}
 
@@ -1355,7 +1483,7 @@ export function PageBulkBuild() {
                   <Typography variant="body2">
                     {t(
                       'bulkBuild.desc',
-                      'Otimiza seus personagens em sequência (#1, #2, #3...). Os artefatos e a arma escolhidos para #1 ficam bloqueados para #2 em diante — assim o personagem #5 nunca usa equipamentos dos personagens #1 a #4.'
+                      'Otimiza seus personagens em sequência (#1, #2, #3...). Os artefatos e a arma escolhidos para #1 ficam bloqueados para #2 em diante — assim o personagem #5 nunca usa equipamentos dos personagens #1 a #4. Personagens desabilitados são desconsiderados do ranking.'
                     )}
                   </Typography>
                 }
@@ -1365,7 +1493,7 @@ export function PageBulkBuild() {
             <Alert severity="info" sx={{ py: 0.5 }}>
               {t(
                 'bulkBuild.priorityRuleAlert',
-                'Regra de Prioridade Estrita: a fila é calculada do #1 em diante. Cada personagem bloqueia sua arma e seus 5 artefatos vencedores para todos os personagens abaixo dele. Selecione o Objetivo e os Conjuntos/Efeitos de cada personagem antes de iniciar.'
+                'Regra de Prioridade Estrita: a fila é calculada do #1 em diante. Cada personagem habilitado bloqueia sua arma e seus 5 artefatos vencedores para todos os personagens abaixo dele. Personagens desabilitados são desconsiderados do ranking e seus itens ficam livres para personagens abaixo.'
               )}
             </Alert>
 
@@ -1395,6 +1523,15 @@ export function PageBulkBuild() {
                   'bulkBuild.quickMultiAddBtn',
                   'Ajustes Rápidos (Adicionar Múltiplos)'
                 )}
+              </Button>
+              <Button
+                color="warning"
+                startIcon={<TheaterComedy />}
+                disabled={isRunning || !queue.length}
+                onClick={onOpenTheaterModal}
+              >
+                {t('bulkBuild.theaterBtn', 'Teatro Elemental')}
+                {theaterElements.length ? ` (${theaterElements.length})` : ''}
               </Button>
               <Button
                 color="info"
