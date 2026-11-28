@@ -82,6 +82,7 @@ import { uiDataForTeam } from '@genshin-optimizer/gi/uidata'
 import type { NumNode } from '@genshin-optimizer/gi/wr'
 import { dynamicData, mergeData, optimize } from '@genshin-optimizer/gi/wr'
 import {
+  AutoAwesome,
   CheckBox,
   CheckBoxOutlineBlank,
   Close,
@@ -106,6 +107,7 @@ import {
   MenuItem,
   Skeleton,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import type React from 'react'
@@ -127,6 +129,10 @@ import { SupportArtifactBuffComparison } from '../../../TeamSetting/SupportArtif
 import useCompareData from '../../../useCompareData'
 import CompareBtn from '../../CompareBtn'
 import { CustomMultiTargetButton } from '../../CustomMultiTarget/CustomMultiTargetButton'
+import {
+  applyKqmRotation,
+  getKqmRotation,
+} from '../../CustomMultiTarget/kqmRotations'
 import ArtifactSetConfig from './Components/ArtifactSetConfig'
 import AssumeFullLevelToggle from './Components/AssumeFullLevelToggle'
 import BonusStatsCard from './Components/BonusStatsCard'
@@ -901,6 +907,35 @@ export default function TabBuild() {
           />
           <BonusStatsCard />
           <CustomMultiTargetButton />
+          {(() => {
+            const kqmRot = getKqmRotation(characterKey)
+            if (!kqmRot) return null
+            return (
+              <Tooltip
+                title={`${kqmRot.comboNotation} — ${kqmRot.description}`}
+              >
+                <span>
+                  <Button
+                    fullWidth
+                    color="info"
+                    disabled={generatingBuilds}
+                    startIcon={<AutoAwesome />}
+                    onClick={() =>
+                      applyKqmRotation(
+                        database,
+                        teamCharId,
+                        characterKey,
+                        gender
+                      )
+                    }
+                  >
+                    {t('kqm.applyRotationBtn', 'Rotação KQM')} (
+                    {kqmRot.comboNotation})
+                  </Button>
+                </span>
+              </Tooltip>
+            )
+          })()}
         </Grid>
         {/* 2 */}
         <Grid

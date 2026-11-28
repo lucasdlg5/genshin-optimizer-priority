@@ -125,6 +125,10 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import {
+  applyKqmRotation,
+  applyKqmRotationsForTeam,
+} from './CharacterDisplay/CustomMultiTarget/kqmRotations'
 import ArtifactSetConfig from './CharacterDisplay/Tabs/TabOptimize/Components/ArtifactSetConfig'
 import { KqmsErCard } from './CharacterDisplay/Tabs/TabOptimize/Components/KqmsErCard'
 import { buildMaxArtifactConditionals } from './CharacterDisplay/Tabs/TabOptimize/Components/maxArtifactCondsUtil'
@@ -135,6 +139,10 @@ import {
 import OptimizationTargetSelector from './CharacterDisplay/Tabs/TabOptimize/Components/OptimizationTargetSelector'
 import StatFilterCard from './CharacterDisplay/Tabs/TabOptimize/Components/StatFilterCard'
 import { WeaponFilter } from './CharacterDisplay/Tabs/TabOptimize/Components/WeaponFilter'
+import {
+  applyKqmArtifacts,
+  applyKqmArtifactsForTeam,
+} from './CharacterDisplay/Tabs/TabOptimize/kqmArtifacts'
 import { calculateTeamKqmsEr } from './CharacterDisplay/Tabs/TabOptimize/kqmsErCalc'
 import { useTeamKqmsEr } from './CharacterDisplay/Tabs/TabOptimize/useTeamKqmsEr'
 import {
@@ -1021,6 +1029,24 @@ export function PageBulkBuild() {
     }
   }, [queue, database, gender])
 
+  const handleApplyKqmRotationsQueue = useCallback(() => {
+    const enabledItems = queue.filter((q) => q.enabled)
+    const targetItems = enabledItems.length ? enabledItems : queue
+    const uniqueTeamIds = Array.from(new Set(targetItems.map((q) => q.teamId)))
+    for (const tId of uniqueTeamIds) {
+      applyKqmRotationsForTeam(database, tId, gender)
+    }
+  }, [queue, database, gender])
+
+  const handleApplyKqmArtifactsQueue = useCallback(() => {
+    const enabledItems = queue.filter((q) => q.enabled)
+    const targetItems = enabledItems.length ? enabledItems : queue
+    const uniqueTeamIds = Array.from(new Set(targetItems.map((q) => q.teamId)))
+    for (const tId of uniqueTeamIds) {
+      applyKqmArtifactsForTeam(database, tId)
+    }
+  }, [queue, database])
+
   const queueRef = useRef(queue)
   queueRef.current = queue
 
@@ -1409,6 +1435,28 @@ export function PageBulkBuild() {
                 {t(
                   'bulkBuild.maxAllTalentsBtn',
                   'Ativar Todas as Passivas e Efeitos de Talentos no Máximo (Fila Toda)'
+                )}
+              </Button>
+              <Button
+                color="info"
+                startIcon={<AutoAwesome />}
+                disabled={isRunning || !queue.length}
+                onClick={handleApplyKqmRotationsQueue}
+              >
+                {t(
+                  'bulkBuild.applyKqmRotationsQueueBtn',
+                  'Aplicar Rotações KQM (Fila Toda)'
+                )}
+              </Button>
+              <Button
+                color="info"
+                startIcon={<AutoAwesome />}
+                disabled={isRunning || !queue.length}
+                onClick={handleApplyKqmArtifactsQueue}
+              >
+                {t(
+                  'bulkBuild.applyKqmArtifactsQueueBtn',
+                  'Aplicar Artefatos KQM (Fila Toda)'
                 )}
               </Button>
               <Button
@@ -2097,6 +2145,14 @@ function BulkQueueRowInner({
     enableAllTeamTalentPassivesMax(database, teamId, gender)
   }, [database, teamId, gender])
 
+  const handleApplyKqmRotationSingle = useCallback(() => {
+    applyKqmRotation(database, teamCharId, characterKey, gender)
+  }, [database, teamCharId, characterKey, gender])
+
+  const handleApplyKqmArtifactsSingle = useCallback(() => {
+    applyKqmArtifacts(database, teamCharId, characterKey)
+  }, [database, teamCharId, characterKey])
+
   const hasTarget = Boolean(optConfig.optimizationTarget?.length)
 
   if (!characterContextValue || !dataContextValue) {
@@ -2248,6 +2304,24 @@ function BulkQueueRowInner({
                           'bulkBuild.maxTalentsSingleBtn',
                           'Ativar Passivas & Talentos Máx.'
                         )}
+                      </Button>
+
+                      <Button
+                        size="small"
+                        color="info"
+                        startIcon={<AutoAwesome />}
+                        onClick={handleApplyKqmRotationSingle}
+                      >
+                        {t('bulkBuild.kqmRotationSingleBtn', 'Rotação KQM')}
+                      </Button>
+
+                      <Button
+                        size="small"
+                        color="info"
+                        startIcon={<AutoAwesome />}
+                        onClick={handleApplyKqmArtifactsSingle}
+                      >
+                        {t('bulkBuild.kqmArtifactsSingleBtn', 'Artefatos KQM')}
                       </Button>
 
                       <Button

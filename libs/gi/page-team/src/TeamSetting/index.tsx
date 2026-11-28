@@ -34,6 +34,8 @@ import { Suspense, useCallback, useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import BuildDropdown from '../BuildDropdown'
+import { applyKqmRotationsForTeam } from '../CharacterDisplay/CustomMultiTarget/kqmRotations'
+import { applyKqmArtifactsForTeam } from '../CharacterDisplay/Tabs/TabOptimize/kqmArtifacts'
 import { LoadoutDropdown } from '../LoadoutDropdown'
 import { enableAllTeamTalentPassivesMax } from './maxTalentCondsUtil'
 import { ResonanceDisplay } from './ResonanceDisplay'
@@ -215,6 +217,14 @@ function TeamEditor({
     enableAllTeamTalentPassivesMax(database, teamId, gender)
   }, [database, teamId, gender])
 
+  const handleApplyKqmRotationsTeam = useCallback(() => {
+    applyKqmRotationsForTeam(database, teamId, gender)
+  }, [database, teamId, gender])
+
+  const handleApplyKqmArtifactsTeam = useCallback(() => {
+    applyKqmArtifactsForTeam(database, teamId)
+  }, [database, teamId])
+
   const dataContextValue: dataContextObj | undefined = useMemo(() => {
     if (!teamData || !charUIData) return undefined
     return {
@@ -280,6 +290,28 @@ function TeamEditor({
           {t(
             'teamSettings.maxTeamTalentsBtn',
             'Ativar Todas as Passivas e Efeitos de Talentos no Máximo (Equipe Toda)'
+          )}
+        </Button>
+        <Button
+          color="info"
+          startIcon={<AutoAwesomeIcon />}
+          disabled={!hasAnyMember}
+          onClick={handleApplyKqmRotationsTeam}
+        >
+          {t(
+            'teamSettings.applyKqmRotationsBtn',
+            'Aplicar Rotações KQM (Equipe Toda)'
+          )}
+        </Button>
+        <Button
+          color="info"
+          startIcon={<AutoAwesomeIcon />}
+          disabled={!hasAnyMember}
+          onClick={handleApplyKqmArtifactsTeam}
+        >
+          {t(
+            'teamSettings.applyKqmArtifactsBtn',
+            'Aplicar Artefatos KQM (Equipe Toda)'
           )}
         </Button>
       </Box>

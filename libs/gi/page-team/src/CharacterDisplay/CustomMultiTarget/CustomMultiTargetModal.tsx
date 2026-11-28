@@ -7,10 +7,15 @@ import {
 import { deepClone } from '@genshin-optimizer/common/util'
 import type { CustomMultiTarget } from '@genshin-optimizer/gi/db'
 import { initCustomMultiTarget } from '@genshin-optimizer/gi/db'
-import { TeamCharacterContext, useDatabase } from '@genshin-optimizer/gi/db-ui'
+import {
+  TeamCharacterContext,
+  useDatabase,
+  useDBMeta,
+} from '@genshin-optimizer/gi/db-ui'
 import { DataContext } from '@genshin-optimizer/gi/ui'
 import { UIData } from '@genshin-optimizer/gi/uidata'
 import AddIcon from '@mui/icons-material/Add'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CloseIcon from '@mui/icons-material/Close'
 import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize'
 import {
@@ -22,12 +27,14 @@ import {
   Grid,
   IconButton,
   Skeleton,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import { Suspense, useCallback, useContext, useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import CustomMultiTargetCard from './CustomMultiTargetCard'
 import CustomMultiTargetImportBtn from './CustomMultiTargetImportBtn'
+import { buildKqmCustomMultiTarget, getKqmRotation } from './kqmRotations'
 
 export function CustomMultiTargetModal({
   open,
@@ -37,6 +44,7 @@ export function CustomMultiTargetModal({
   onClose: () => void
 }) {
   const database = useDatabase()
+  const { gender } = useDBMeta()
   const { t } = useTranslation('page_character')
   const { teamChar, teamCharId } = useContext(TeamCharacterContext)
   const [customMultiTargets, setCustomTargets] = useState(
@@ -45,6 +53,34 @@ export function CustomMultiTargetModal({
 
   if (usePrev(teamChar.customMultiTargets) !== teamChar.customMultiTargets)
     setCustomTargets(teamChar.customMultiTargets)
+
+  const kqmPreset = getKqmRotation(teamChar.key)
+  const applyKqmPreset = useCallback(() => {
+    const mtarget = buildKqmCustomMultiTarget(teamChar.key, gender)
+    if (!mtarget) return
+    const next = [...customMultiTargets]
+    const existingIdx = next.findIndex((mt) => mt.name === mtarget.name)
+    let targetIndex: number
+    if (existingIdx >= 0) {
+      next[existingIdx] = mtarget
+      targetIndex = existingIdx
+    } else {
+      next.push(mtarget)
+      targetIndex = next.length - 1
+    }
+    setCustomTargets(next)
+    database.teamChars.set(teamCharId, { customMultiTargets: next })
+    database.optConfigs.set(teamChar.optConfigId, {
+      optimizationTarget: ['custom', String(targetIndex)],
+    })
+  }, [
+    customMultiTargets,
+    database,
+    gender,
+    teamChar.key,
+    teamChar.optConfigId,
+    teamCharId,
+  ])
 
   const addNewCustomMultiTarget = useCallback(() => {
     setCustomTargets([
@@ -220,6 +256,26 @@ export function CustomMultiTargetModal({
                       btnProps={{ fullWidth: true }}
                     />
                   </Grid>
+                  {kqmPreset && (
+                    <Grid size={{ xs: 1, md: 2 }}>
+                      <Tooltip
+                        title={`${kqmPreset.comboNotation} — ${kqmPreset.description}`}
+                      >
+                        <Button
+                          fullWidth
+                          color="info"
+                          onClick={applyKqmPreset}
+                          startIcon={<AutoAwesomeIcon />}
+                        >
+                          {t(
+                            'multiTarget.applyKqmRotation',
+                            'Aplicar Rotação KQM (Quick Guide)'
+                          )}{' '}
+                          ({kqmPreset.comboNotation})
+                        </Button>
+                      </Tooltip>
+                    </Grid>
+                  )}
                   {customMultiTargetDisplays}
                 </Grid>
               </Box>

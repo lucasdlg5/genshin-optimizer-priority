@@ -64,10 +64,12 @@ import {
   IconButton,
   Skeleton,
   Stack,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import { Suspense, useCallback, useContext, useMemo, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
+import { applyKqmArtifacts, getKqmArtifactPreset } from '../kqmArtifacts'
 import { buildMaxArtifactConditionals } from './maxArtifactCondsUtil'
 
 export default function ArtifactSetConfig({
@@ -253,6 +255,27 @@ export default function ArtifactSetConfig({
                 {allowRainbow4 ? t('artSetConfig.allowed') : 'Excluded'}
               </SqBadge>
             </Typography>
+            {(() => {
+              const kqmArt = getKqmArtifactPreset(charKey)
+              if (!kqmArt) return null
+              return (
+                <Tooltip title={`${kqmArt.description} (${kqmArt.sourceUrl})`}>
+                  <span>
+                    <Button
+                      size="small"
+                      color="info"
+                      disabled={disabled}
+                      startIcon={<AutoAwesomeIcon />}
+                      onClick={() =>
+                        applyKqmArtifacts(database, teamCharId, charKey)
+                      }
+                    >
+                      {t('artSetConfig.applyKqmBtn', 'Artefatos KQM')}
+                    </Button>
+                  </span>
+                </Tooltip>
+              )
+            })()}
           </Stack>
         </CardContent>
         <Button
@@ -268,8 +291,26 @@ export default function ArtifactSetConfig({
       {/* Begin modal */}
       <ModalWrapper open={open} onClose={onClose}>
         <CardThemed>
-          <CardContent sx={{ display: 'flex', gap: 1 }}>
+          <CardContent sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             <Typography variant="h6">{t('artSetConfig.title')}</Typography>
+            {(() => {
+              const kqmArt = getKqmArtifactPreset(charKey)
+              if (!kqmArt) return null
+              return (
+                <Tooltip title={`${kqmArt.description} (${kqmArt.sourceUrl})`}>
+                  <Button
+                    size="small"
+                    color="info"
+                    startIcon={<AutoAwesomeIcon />}
+                    onClick={() =>
+                      applyKqmArtifacts(database, teamCharId, charKey)
+                    }
+                  >
+                    {t('artSetConfig.applyKqmBtn', 'Artefatos KQM')}
+                  </Button>
+                </Tooltip>
+              )
+            })()}
             <IconButton onClick={onClose} sx={{ ml: 'auto' }}>
               <CloseIcon />
             </IconButton>
