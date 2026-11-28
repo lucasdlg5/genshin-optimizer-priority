@@ -4,12 +4,13 @@ import {
   objPathValue,
   valueString,
 } from '@genshin-optimizer/common/util'
-import { artifactDefIcon } from '@genshin-optimizer/gi/assets'
+import { artifactDefIcon, weaponAsset } from '@genshin-optimizer/gi/assets'
 import type {
   ArtifactSetKey,
   CharacterKey,
   ElementKey,
   GenderKey,
+  WeaponKey,
 } from '@genshin-optimizer/gi/consts'
 import { absorbableEle } from '@genshin-optimizer/gi/consts'
 import type {
@@ -31,6 +32,7 @@ import {
   CharacterName,
   getTeamData,
   resolveInfo,
+  WeaponName,
 } from '@genshin-optimizer/gi/ui'
 import type { CalcResult, UIData } from '@genshin-optimizer/gi/uidata'
 import { uiDataForTeam } from '@genshin-optimizer/gi/uidata'
@@ -124,6 +126,73 @@ export const SUPPORT_ARTIFACT_SPECS: SupportArtifactSpec[] = [
     setKey: 'SongOfDaysPast',
     desc: '4pc: +1200 Flat DMG (15,000 Healing)',
     getCond: () => ({ healing: '15000' }),
+  },
+]
+
+type SupportWeaponSpec = {
+  weaponKey: WeaponKey
+  desc: string
+  getPremod: (ele: ElementKey) => Record<string, NumNode>
+}
+
+export const SUPPORT_WEAPON_SPECS: SupportWeaponSpec[] = [
+  {
+    weaponKey: 'ThrillingTalesOfDragonSlayers',
+    desc: 'R5: +48% ATK ao trocar de personagem',
+    getPremod: () => ({ atk_: constant(0.48) }),
+  },
+  {
+    weaponKey: 'FreedomSworn',
+    desc: 'R1: +20% ATK, +16% Dano Normal/Carregado/Imersivo',
+    getPremod: () => ({
+      atk_: constant(0.2),
+      normal_dmg_: constant(0.16),
+      charged_dmg_: constant(0.16),
+      plunging_dmg_: constant(0.16),
+    }),
+  },
+  {
+    weaponKey: 'ElegyForTheEnd',
+    desc: 'R1: +20% ATK, +100 Proficiência Elemental',
+    getPremod: () => ({
+      atk_: constant(0.2),
+      eleMas: constant(100),
+    }),
+  },
+  {
+    weaponKey: 'SymphonistOfScents',
+    desc: 'R1: +32% ATK após cura',
+    getPremod: () => ({ atk_: constant(0.32) }),
+  },
+  {
+    weaponKey: 'StarcallersWatch',
+    desc: 'R1: +28% Bônus de Dano ao personagem ativo com escudo',
+    getPremod: () => ({ all_dmg_: constant(0.28) }),
+  },
+  {
+    weaponKey: 'PeakPatrolSong',
+    desc: 'R1: +25.6% Bônus de Dano Elemental (3200 DEF)',
+    getPremod: (ele) => ({ [`${ele}_dmg_`]: constant(0.256) }),
+  },
+  {
+    weaponKey: 'HakushinRing',
+    desc: 'R5: +20% Bônus de Dano Elemental (reação Electro)',
+    getPremod: (ele) => ({ [`${ele}_dmg_`]: constant(0.2) }),
+  },
+  {
+    weaponKey: 'WanderingEvenstar',
+    desc: 'R5: ~+115 ATK Base/Flat (800 EM no suporte)',
+    getPremod: () => ({ atk: constant(115) }),
+  },
+  {
+    weaponKey: 'KeyOfKhajNisut',
+    desc: 'R1: +100 Proficiência Elemental (50k HP no suporte)',
+    getPremod: () => ({ eleMas: constant(100) }),
+  },
+  {
+    weaponKey: 'AThousandFloatingDreams',
+    desc: 'R1: +40 Proficiência Elemental para a equipe',
+    getPremod: () => ({ eleMas: constant(40) }),
   },
 ]
 
@@ -337,6 +406,58 @@ export function computeSupportArtifactBuffComparison({
     .filter(notEmpty)
     .sort((a, b) => b.diffPct - a.diffPct)
 
+  // Detect which support weapons are currently equipped by teammates
+  const activeSupportWeapons = new Set<WeaponKey>()
+  const teamObj = database.teams.get(teamId)
+  for (const ld of teamObj?.loadoutData ?? []) {
+    if (!ld?.teamCharId || ld.teamCharId === teamCharId) continue
+    const wep = database.teams.getLoadoutWeapon(ld)
+    if (
+      wep?.key &&
+      SUPPORT_WEAPON_SPECS.some((spec) => spec.weaponKey === wep.key)
+    ) {
+      activeSupportWeapons.add(wep.key)
+    }
+  }
+
+  const weaponRows = SUPPORT_WEAPON_SPECS.filter(
+    (spec) => !activeSupportWeapons.has(spec.weaponKey)
+  )
+    .map((spec) => {
+      const simTeamData: Partial<Record<CharacterKey, Data[]>> = {
+        ...preMergedTeamData,
+      }
+      const targetArr = preMergedTeamData[characterKey]
+      if (!targetArr) return undefined
+
+      const injectedWeaponBuff: Data = {
+        premod: spec.getPremod(charEle),
+      }
+      simTeamData[characterKey] = [injectedWeaponBuff, ...targetArr]
+
+      const simUI = uiDataForTeam(simTeamData, gender, onFieldCharKey)[
+        characterKey
+      ]?.target
+      if (!simUI) return undefined
+
+      const simNode = getTargetCalcResult(simUI, optimizationTarget)
+      if (!simNode || typeof simNode.value !== 'number') return undefined
+
+      const simValue = simNode.value
+      const diff = simValue - baseValue
+      const diffPct = baseValue !== 0 ? (diff / baseValue) * 100 : 0
+
+      return {
+        weaponKey: spec.weaponKey,
+        desc: spec.desc,
+        simValue,
+        diff,
+        diffPct,
+      }
+    })
+    .filter(notEmpty)
+    .sort((a, b) => b.diffPct - a.diffPct)
+
   return {
     targetName,
     targetUnit,
@@ -344,6 +465,8 @@ export function computeSupportArtifactBuffComparison({
     baseValue,
     activeSupportSets: Array.from(allActiveSupportSets),
     rows,
+    activeSupportWeapons: Array.from(activeSupportWeapons),
+    weaponRows,
   }
 }
 
@@ -679,6 +802,170 @@ export const SupportArtifactBuffComparison = memo(
                 )
               })}
             </Stack>
+
+            {comparison.weaponRows.length > 0 && (
+              <>
+                <Divider />
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                    {t(
+                      'teamSettings.supportWeaponBuffs.title',
+                      'Buffs de Armas de Suporte (TTDS e outras)'
+                    )}
+                  </Typography>
+                  {comparison.activeSupportWeapons.length > 0 && (
+                    <SqBadge color="success">
+                      {t('teamSettings.supportWeaponBuffs.active', 'Ativas:')}{' '}
+                      {comparison.activeSupportWeapons.map((wk, idx) => (
+                        <span key={wk}>
+                          {idx > 0 ? ', ' : ''}
+                          <WeaponName weaponKey={wk} />
+                        </span>
+                      ))}
+                    </SqBadge>
+                  )}
+                </Box>
+                <Stack spacing={0.5}>
+                  {comparison.weaponRows.map(
+                    ({ weaponKey, desc, simValue, diff, diffPct }) => {
+                      const sign = diffPct > 0.005 ? '+' : ''
+                      const pctColor =
+                        diffPct > 0.05
+                          ? 'success.main'
+                          : diffPct < -0.05
+                            ? 'error.main'
+                            : 'text.secondary'
+                      const absDiffStr = `${diff > 0 ? '+' : ''}${valueString(
+                        diff,
+                        targetUnit,
+                        targetFixed
+                      )}`
+                      const simTotalStr = valueString(
+                        simValue,
+                        targetUnit,
+                        targetFixed
+                      )
+                      return (
+                        <Box
+                          key={weaponKey}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 0.75,
+                            px: 0.75,
+                            py: 0.5,
+                            borderRadius: 1,
+                            bgcolor: 'contentDark.main',
+                          }}
+                        >
+                          <Box
+                            component="img"
+                            src={weaponAsset(weaponKey, true)}
+                            sx={{
+                              width: 24,
+                              height: 24,
+                              flexShrink: 0,
+                              objectFit: 'contain',
+                            }}
+                          />
+                          <Typography
+                            variant="caption"
+                            sx={{ flexGrow: 1, minWidth: 0 }}
+                            noWrap
+                          >
+                            <WeaponName weaponKey={weaponKey} />
+                          </Typography>
+                          <InfoTooltip
+                            title={
+                              <Box>
+                                <Typography
+                                  variant="caption"
+                                  sx={{ display: 'block', fontWeight: 'bold' }}
+                                >
+                                  {desc}
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  sx={{ display: 'block' }}
+                                >
+                                  {valueString(
+                                    baseValue,
+                                    targetUnit,
+                                    targetFixed
+                                  )}{' '}
+                                  → {simTotalStr} ({absDiffStr})
+                                </Typography>
+                              </Box>
+                            }
+                          />
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'flex-end',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'baseline',
+                                gap: 0.75,
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  fontWeight: 'bold',
+                                  color: pctColor,
+                                  fontVariantNumeric: 'tabular-nums',
+                                }}
+                              >
+                                {absDiffStr}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  fontWeight: 'bold',
+                                  color: pctColor,
+                                  minWidth: '3.6em',
+                                  textAlign: 'right',
+                                  fontVariantNumeric: 'tabular-nums',
+                                }}
+                              >
+                                {`${sign}${diffPct.toFixed(1)}%`}
+                              </Typography>
+                            </Box>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{
+                                fontSize: '0.68rem',
+                                lineHeight: 1.15,
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
+                            >
+                              {t(
+                                'teamSettings.supportArtBuffs.total',
+                                'Total:'
+                              )}{' '}
+                              {simTotalStr}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      )
+                    }
+                  )}
+                </Stack>
+              </>
+            )}
           </Stack>
         </CardContent>
       </CardThemed>
