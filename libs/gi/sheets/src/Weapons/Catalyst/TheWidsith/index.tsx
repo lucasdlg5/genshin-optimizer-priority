@@ -1,6 +1,12 @@
 import type { WeaponKey } from '@genshin-optimizer/gi/consts'
 import { allElementKeys } from '@genshin-optimizer/gi/consts'
-import { equal, input, subscript } from '@genshin-optimizer/gi/wr'
+import {
+  constant,
+  input,
+  lookup,
+  prod,
+  subscript,
+} from '@genshin-optimizer/gi/wr'
 import { cond, st, stg, trans } from '../../../SheetUtil'
 import type { IWeaponSheet } from '../../IWeaponSheet'
 import { dataObjForWeaponSheet } from '../../util'
@@ -14,25 +20,44 @@ const refinementEleDmgVals = [-1, 0.48, 0.6, 0.72, 0.84, 0.96]
 const refinementEleMasVals = [-1, 240, 300, 360, 420, 480]
 
 const [condPassivePath, condPassive] = cond(key, 'Debut')
-const atk_ = equal(
-  'recitative',
+const fullAtk_ = subscript(input.weapon.refinement, refinementAtkVals)
+const fullEleDmg_ = subscript(input.weapon.refinement, refinementEleDmgVals)
+const fullEleMas = subscript(input.weapon.refinement, refinementEleMasVals)
+
+// When no specific buff is manually selected, apply the average expected value
+// (1/3 of each of the 3 random buffs). When one is manually selected, apply
+// only that buff and ignore the other two.
+const atk_ = lookup(
   condPassive,
-  subscript(input.weapon.refinement, refinementAtkVals)
+  {
+    recitative: fullAtk_,
+    aria: constant(0),
+    interlude: constant(0),
+  },
+  prod(1 / 3, fullAtk_)
 )
 const eleBonus_ = Object.fromEntries(
   allElementKeys.map((ele) => [
     ele,
-    equal(
-      'aria',
+    lookup(
       condPassive,
-      subscript(input.weapon.refinement, refinementEleDmgVals)
+      {
+        aria: fullEleDmg_,
+        recitative: constant(0),
+        interlude: constant(0),
+      },
+      prod(1 / 3, fullEleDmg_)
     ),
   ])
 )
-const eleMas = equal(
-  'interlude',
+const eleMas = lookup(
   condPassive,
-  subscript(input.weapon.refinement, refinementEleMasVals)
+  {
+    interlude: fullEleMas,
+    aria: constant(0),
+    recitative: constant(0),
+  },
+  prod(1 / 3, fullEleMas)
 )
 
 const data = dataObjForWeaponSheet(key, {
