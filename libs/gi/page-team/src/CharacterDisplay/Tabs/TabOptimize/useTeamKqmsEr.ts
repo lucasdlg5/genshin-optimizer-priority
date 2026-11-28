@@ -9,7 +9,7 @@ import {
 } from '@genshin-optimizer/gi/db-ui'
 import { useContext, useMemo } from 'react'
 import type { TeamKqmsErResult, TeamMemberErInput } from './kqmsErCalc'
-import { calculateTeamKqmsEr } from './kqmsErCalc'
+import { calculateTeamKqmsEr, getMultiTargetSkillInfo } from './kqmsErCalc'
 
 export function useTeamKqmsEr(): {
   teamKqms: TeamKqmsErResult
@@ -19,13 +19,14 @@ export function useTeamKqmsEr(): {
   const { gender } = useDBMeta()
   const {
     teamId,
-    teamChar: { key: characterKey, optConfigId },
+    teamChar: { key: characterKey, optConfigId, customMultiTargets },
   } = useContext(TeamCharacterContext)
   const team = useTeam(teamId)
   const optConfig = useOptConfig(optConfigId)
 
   const rotationDuration = optConfig?.kqmsRotationDuration ?? 20
   const enemyScenario = optConfig?.kqmsEnemyScenario ?? 'boss'
+  const optimizationTarget = optConfig?.optimizationTarget
 
   return useMemo(() => {
     const loadoutData = team?.loadoutData ?? []
@@ -37,6 +38,7 @@ export function useTeamKqmsEr(): {
         const dbChar = database.chars.get(tc.key)
         const weapon = database.teams.getLoadoutWeapon(ld)
         const arts = database.teams.getLoadoutArtifacts(ld)
+        const memberOpt = database.optConfigs.get(tc.optConfigId)
         const artifactSetCounts: Partial<Record<ArtifactSetKey, number>> = {}
         for (const art of Object.values(arts)) {
           if (art?.setKey) {
@@ -44,6 +46,14 @@ export function useTeamKqmsEr(): {
               (artifactSetCounts[art.setKey] ?? 0) + 1
           }
         }
+        const skillInfo = getMultiTargetSkillInfo(
+          tc.optConfigId === optConfigId
+            ? optimizationTarget
+            : memberOpt?.optimizationTarget,
+          tc.optConfigId === optConfigId
+            ? customMultiTargets
+            : tc.customMultiTargets
+        )
         return {
           characterKey: tc.key,
           constellation: dbChar?.constellation ?? 0,
@@ -51,6 +61,7 @@ export function useTeamKqmsEr(): {
           weaponKey: weapon?.key,
           weaponRefinement: weapon?.refinement ?? 1,
           artifactSetCounts,
+          ...skillInfo,
         } satisfies TeamMemberErInput
       })
       .filter(notEmpty)
@@ -70,5 +81,15 @@ export function useTeamKqmsEr(): {
       teamKqms,
       currentCharErFloor: currentMember?.recommendedErPercent ?? 100,
     }
-  }, [team, database, gender, rotationDuration, enemyScenario, characterKey])
+  }, [
+    team,
+    database,
+    gender,
+    rotationDuration,
+    enemyScenario,
+    characterKey,
+    optConfigId,
+    optimizationTarget,
+    customMultiTargets,
+  ])
 }

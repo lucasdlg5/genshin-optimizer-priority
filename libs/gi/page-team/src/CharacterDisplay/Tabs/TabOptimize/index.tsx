@@ -149,7 +149,7 @@ import UseEquipped from './Components/UseEquipped'
 import { UseTeammateArt } from './Components/UseTeammateArt'
 import { WeaponBuildsPreviewCard } from './Components/WeaponBuildsPreviewCard'
 import { WeaponFilter } from './Components/WeaponFilter'
-import { calculateTeamKqmsEr } from './kqmsErCalc'
+import { calculateTeamKqmsEr, getMultiTargetSkillInfo } from './kqmsErCalc'
 import ScalesWith from './ScalesWith'
 import { useTeamKqmsEr } from './useTeamKqmsEr'
 import {
@@ -541,6 +541,7 @@ export default function TabBuild() {
                     (artifactSetCounts[art.setKey] ?? 0) + 1
                 }
               }
+              const memberOpt = database.optConfigs.get(tc.optConfigId)
               return {
                 characterKey: tc.key,
                 constellation: dbChar?.constellation ?? 0,
@@ -548,6 +549,10 @@ export default function TabBuild() {
                 weaponKey: memberWeapon?.key,
                 weaponRefinement: memberWeapon?.refinement ?? 1,
                 artifactSetCounts,
+                ...getMultiTargetSkillInfo(
+                  memberOpt?.optimizationTarget,
+                  tc.customMultiTargets
+                ),
               }
             })
             .filter(notEmpty)

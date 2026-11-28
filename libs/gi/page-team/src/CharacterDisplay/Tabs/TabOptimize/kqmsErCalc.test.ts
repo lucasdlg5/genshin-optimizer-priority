@@ -2,6 +2,7 @@ import {
   calculateTeamKqmsEr,
   ENERGY_CONSTANTS,
   getCharacterBurstCost,
+  getMultiTargetSkillInfo,
 } from './kqmsErCalc'
 
 describe('kqmsErCalc', () => {
@@ -116,5 +117,57 @@ describe('kqmsErCalc', () => {
     expect(xl.recommendedErPercent).toBeGreaterThan(200)
     expect(soloXiangling.recommendations).toContain('favonius')
     expect(soloXiangling.recommendations).toContain('battery:pyro')
+  })
+
+  it('lowers KQMS ER% floor when a Custom Multi-Target includes the character Skill (guaranteed on-field particle catch)', () => {
+    const skillInfo = getMultiTargetSkillInfo(
+      ['custom', '0'],
+      [
+        {
+          targets: [
+            { path: ['skill', 'bubbleDmg'], weight: 1 },
+            { path: ['burst', 'skillDmg'], weight: 1 },
+          ],
+        },
+      ]
+    )
+    expect(skillInfo.guaranteedSelfCatch).toBe(true)
+
+    const base = calculateTeamKqmsEr({
+      members: [
+        {
+          characterKey: 'Neuvillette',
+          constellation: 0,
+          isOnFieldPrimary: true,
+        },
+        { characterKey: 'Furina', constellation: 0, isOnFieldPrimary: false },
+      ],
+    })
+    const withMultiSkill = calculateTeamKqmsEr({
+      members: [
+        {
+          characterKey: 'Neuvillette',
+          constellation: 0,
+          isOnFieldPrimary: true,
+        },
+        {
+          characterKey: 'Furina',
+          constellation: 0,
+          isOnFieldPrimary: false,
+          ...skillInfo,
+        },
+      ],
+    })
+
+    const furinaBase = base.members.find((m) => m.characterKey === 'Furina')!
+    const furinaCatch = withMultiSkill.members.find(
+      (m) => m.characterKey === 'Furina'
+    )!
+    expect(furinaCatch.baseEnergyReceived).toBeGreaterThan(
+      furinaBase.baseEnergyReceived
+    )
+    expect(furinaCatch.recommendedErPercent).toBeLessThan(
+      furinaBase.recommendedErPercent
+    )
   })
 })

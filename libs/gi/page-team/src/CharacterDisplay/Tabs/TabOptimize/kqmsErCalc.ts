@@ -414,6 +414,49 @@ export type TeamMemberErInput = {
   artifactSetCounts?: Partial<Record<ArtifactSetKey, number>>
   /** Optional explicit funnel target characterKey for this member's skill particles */
   funnelTo?: CharacterKey
+  /**
+   * When true (e.g. a Custom Multi-Target includes this character's Elemental Skill),
+   * it is guaranteed that this character casts their Skill and catches their own
+   * generated particles on-field.
+   */
+  guaranteedSelfCatch?: boolean
+  /** Optional explicit Skill cast count inferred from a Custom Multi-Target */
+  multiTargetSkillUses?: number
+}
+
+/**
+ * Inspects the active optimizationTarget and customMultiTargets to detect whether
+ * a Custom Multi-Target includes the character's Elemental Skill (`path[0] === 'skill'`).
+ * When present, guarantees that the character catches their own generated Skill particles
+ * on-field and reflects explicit Skill casts in KQMS ER% calculations.
+ */
+export function getMultiTargetSkillInfo(
+  optimizationTarget: string[] | undefined,
+  customMultiTargets:
+    | ReadonlyArray<{
+        targets: ReadonlyArray<{ path: string[]; weight: number }>
+      }>
+    | undefined
+): { guaranteedSelfCatch: boolean; multiTargetSkillUses?: number } {
+  if (optimizationTarget?.[0] !== 'custom' || !customMultiTargets?.length) {
+    return { guaranteedSelfCatch: false }
+  }
+  const idx = Number(optimizationTarget[1])
+  const mt = Number.isInteger(idx) ? customMultiTargets[idx] : undefined
+  if (!mt) return { guaranteedSelfCatch: false }
+
+  const skillTargets = mt.targets.filter(
+    (t) => t.path[0] === 'skill' && t.weight > 0
+  )
+  if (!skillTargets.length) return { guaranteedSelfCatch: false }
+
+  // Estimate cast count conservatively using the minimum weight among skill targets
+  // (e.g. 2x E -> 2, while 1x initial + 10x ticks -> 1).
+  const minWeight = Math.min(...skillTargets.map((t) => Math.round(t.weight)))
+  return {
+    guaranteedSelfCatch: true,
+    multiTargetSkillUses: Math.max(1, minWeight),
+  }
 }
 
 /**
@@ -620,6 +663,13 @@ export function calculateTeamKqmsEr({
         theoreticalUses,
         Math.max(1, Math.round(profile.maxUsesIn20s * durationScale))
       )
+      if (m.multiTargetSkillUses && m.multiTargetSkillUses > skillUses) {
+        const maxCapped = Math.max(
+          profile.maxUsesIn20s,
+          Math.min(2, theoreticalUses)
+        )
+        skillUses = Math.min(m.multiTargetSkillUses, maxCapped)
+      }
     }
 
     const particlesGenerated = profile.continuous
@@ -670,8 +720,14 @@ export function calculateTeamKqmsEr({
     } = gen
     if (particlesGenerated > 0) {
       // Continuous off-field summons (e.g. Oz, Salon Solitaire, Sesshou Sakura, Guoba):
-      // ~65% of particles are caught by the primary on-field character, ~35% by the caster/swap
-      if (profile.continuous && member.characterKey !== onFieldCharKey) {
+      // ~70% of particles are caught by the primary on-field character, ~30% by the caster/swap.
+      // However, if guaranteedSelfCatch is set (e.g. Custom Multi-Target includes this
+      // character's Skill), the caster is guaranteed to absorb their own particles on-field.
+      if (
+        profile.continuous &&
+        member.characterKey !== onFieldCharKey &&
+        !member.guaranteedSelfCatch
+      ) {
         for (const receiver of genStats) {
           const sameEle = receiver.element === srcEle
           const onFieldVal = sameEle
